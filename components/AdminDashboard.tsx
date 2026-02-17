@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, Package, ShoppingBag, Plus, Trash2, Edit3,
-  LogOut, Loader2, Palette, Lock, X, ClipboardList, CheckCircle, Truck, Clock, AlertCircle, Upload, Eye, EyeOff, Settings, Search
+  LogOut, Loader2, Palette, Lock, X, ClipboardList, CheckCircle, Truck, Clock, AlertCircle, Upload, Eye, EyeOff, Settings, Search, Printer
 } from 'lucide-react';
 import { Product, Order, SiteSettings } from '../types';
 import { supabase } from '../lib/supabase';
@@ -58,8 +58,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
 
   const fetchSettings = async () => {
     try {
-      // نحاول جلب الإعدادات (نفترض وجود سجل واحد بمعرف ثابت)
-      const { data, error } = await supabase.from('site_settings').select('*').limit(1).maybeSingle();
+      const { data } = await supabase.from('site_settings').select('*').limit(1).maybeSingle();
       if (data) setSiteSettings(data);
     } catch (e) {
       console.error("Error fetching settings:", e);
@@ -69,7 +68,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const updateSettings = async () => {
     setIsLoading(true);
     try {
-      // استخدام id=1 بشكل دائم لضمان تحديث نفس السجل
       const settingsToSave = { ...siteSettings, id: siteSettings.id || 1 };
       const { error } = await supabase.from('site_settings').upsert([settingsToSave]);
       if (error) throw error;
@@ -119,6 +117,88 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     } else {
       alert('فشل تحديث حالة الطلب');
     }
+  };
+
+  const handlePrint = (order: Order) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const itemsHtml = (order.items || []).map(item => `
+      <tr>
+        <td style="padding: 5px; border-bottom: 1px solid #eee;">#${item.id || 'N/A'}</td>
+        <td style="padding: 5px; border-bottom: 1px solid #eee;">${item.product_name}<br/><small>اللون: ${item.selected_color || 'افتراضي'}</small></td>
+        <td style="padding: 5px; border-bottom: 1px solid #eee;">${item.quantity}</td>
+        <td style="padding: 5px; border-bottom: 1px solid #eee;">${item.price}</td>
+      </tr>
+    `).join('');
+
+    printWindow.document.write(`
+      <html dir="rtl" lang="ar">
+        <head>
+          <title>فاتورة طلب #${order.id.slice(0,8)}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
+            body { font-family: 'Tajawal', sans-serif; width: 80mm; margin: 0 auto; padding: 10px; color: #333; }
+            .header { text-align: center; border-bottom: 2px dashed #333; padding-bottom: 10px; margin-bottom: 10px; }
+            .store-name { font-size: 20px; font-weight: 900; color: #2563eb; }
+            .customer-info { margin-bottom: 15px; font-size: 14px; }
+            .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+            .info-label { font-weight: 700; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px; }
+            th { text-align: right; border-bottom: 1px solid #333; padding: 5px; }
+            .total-section { border-top: 2px dashed #333; padding-top: 10px; font-weight: 900; font-size: 16px; display: flex; justify-content: space-between; }
+            .footer { text-align: center; margin-top: 20px; font-size: 10px; color: #888; border-top: 1px solid #eee; padding-top: 10px; }
+            @media print { body { width: 80mm; margin: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="store-name">أسماء للأدوات المنزلية</div>
+            <div style="font-size: 12px;">فاتورة بيع نقدي</div>
+            <div style="font-size: 10px; margin-top: 5px;">التاريخ: ${new Date(order.created_at).toLocaleDateString('ar-EG')}</div>
+          </div>
+          
+          <div class="customer-info">
+            <div class="info-row"><span class="info-label">رقم الطلب:</span> <span>#${order.id.slice(0,8)}</span></div>
+            <div class="info-row"><span class="info-label">العميل:</span> <span>${order.customer_name}</span></div>
+            <div class="info-row"><span class="info-label">الهاتف:</span> <span>${order.customer_phone}</span></div>
+            <div class="info-row"><span class="info-label">العنوان:</span> <span>${order.customer_address}</span></div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>كود</th>
+                <th>الصنف</th>
+                <th>كمية</th>
+                <th>سعر</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+
+          <div class="total-section">
+            <span>الإجمالي الشامل:</span>
+            <span>${order.total_price.toLocaleString()} ج.م</span>
+          </div>
+
+          <div class="footer">
+            شكراً لتعاملكِ مع متجر أسماء<br/>
+            نسعد دائماً بخدمتكِ
+          </div>
+
+          <script>
+            window.onload = () => {
+              window.print();
+              setTimeout(() => { window.close(); }, 500);
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   const handleSaveProduct = async () => {
@@ -188,7 +268,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
 
   return (
     <div className="flex min-h-screen bg-gray-50 text-right font-['Tajawal']" dir="rtl">
-      {/* Sidebar */}
       <aside className="w-72 bg-white border-l shadow-sm hidden md:flex flex-col">
         <div className="p-8 border-b"><Logo /></div>
         <nav className="flex-1 p-6 space-y-2">
@@ -303,19 +382,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                       <p className="text-xs text-gray-400 font-bold mt-1">{order.customer_address}</p>
                     </div>
                     <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => handlePrint(order)}
+                        className="bg-white border border-gray-200 p-3 rounded-xl text-gray-600 hover:bg-gray-50 transition shadow-sm flex items-center gap-2"
+                        title="طباعة الفاتورة"
+                      >
+                        <Printer className="w-5 h-5" />
+                        <span className="text-xs font-bold">طباعة</span>
+                      </button>
                       <select 
                         value={order.status} 
                         onChange={e => updateOrderStatus(order.id, e.target.value)} 
-                        className="bg-gray-50 border-none p-4 rounded-2xl text-xs font-black outline-none focus:ring-2 focus:ring-blue-600/20 cursor-pointer"
+                        className="bg-gray-50 border border-gray-100 p-3 rounded-xl text-xs font-black outline-none focus:ring-2 focus:ring-blue-600/20 cursor-pointer"
                       >
                         {Object.keys(statusMap).map(s => <option key={s} value={s}>{statusMap[s as keyof typeof statusMap].label}</option>)}
                       </select>
                     </div>
                   </div>
                   <div className="bg-gray-50 p-6 rounded-[2rem] space-y-3">
-                    {order.order_items?.map((item: any) => (
+                    {(order.order_items || order.items || []).map((item: any) => (
                       <div key={item.id} className="flex justify-between items-center text-sm font-bold">
-                        <span className="text-gray-700">{item.product_name} <small className="text-blue-500 font-black mr-2">×{item.quantity}</small></span>
+                        <span className="text-gray-700">{item.product_name} {item.selected_color && <span className="text-[10px] text-blue-500 mr-2">(${item.selected_color})</span>} <small className="text-blue-500 font-black mr-2">×{item.quantity}</small></span>
                         <span className="text-gray-900">{item.price.toLocaleString()} ج.م</span>
                       </div>
                     ))}
