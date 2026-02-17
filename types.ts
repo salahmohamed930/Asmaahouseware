@@ -41,4 +41,11 @@ export interface OrderItem {
   selected_color?: string;
 }
 
+export interface SiteSettings {
+  id?: number;
+  hero_title: string;
+  hero_subtitle: string;
+  hero_image: string;
+}
+
 export type Category = 'الكل' | 'أدوات المطبخ' | 'الأجهزة الكهربائية' | 'الديكور' | 'أواني التقديم';
