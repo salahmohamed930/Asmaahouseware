@@ -1,170 +1,164 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Minus, Plus, Trash2, ShoppingBag, CheckCircle2, LogIn, Loader2, Phone } from 'lucide-react';
-import { CartItem } from '../types';
+import { X, Minus, Plus, Trash2, ShoppingBag, CheckCircle2, Loader2, Tag, Banknote } from 'lucide-react';
+import { CartItem, UserProfile, CategoryData } from '../types';
 import { supabase } from '../lib/supabase';
 
 interface CartProps {
   isOpen: boolean;
   onClose: () => void;
   items: CartItem[];
+  userProfile?: UserProfile | null;
+  categories: CategoryData[];
   onUpdateQuantity: (id: number, color: string | undefined, delta: number) => void;
   onRemove: (id: number, color: string | undefined) => void;
   onClear: () => void;
   onOpenLogin?: () => void;
 }
 
-const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, onRemove, onClear, onOpenLogin }) => {
+const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, userProfile, categories, onUpdateQuantity, onRemove, onClear, onOpenLogin }) => {
   const [showCheckoutForm, setShowCheckoutForm] = useState(false);
   const [customerData, setCustomerData] = useState({ name: '', phone: '', phone2: '', address: '' });
-  const [user, setUser] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  
-  const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+  // احتساب الإجمالي مع سعر الجملة وخصومات الأقسام
+  const subTotal = items.reduce((sum, item) => {
+    const priceToUse = (userProfile?.is_wholesale && item.wholesale_price) ? item.wholesale_price : item.price;
+    const categoryInfo = categories.find(c => c.name === item.category);
+    const categoryDiscount = categoryInfo?.discount_percent || 0;
+    const itemTotal = priceToUse * item.quantity;
+    const discountedItemTotal = itemTotal - (itemTotal * (categoryDiscount / 100));
+    return sum + discountedItemTotal;
+  }, 0);
+
+  // احتساب خصم المستخدم الخاص للطلب القادم
+  let finalTotal = subTotal;
+  let userDiscountAmount = 0;
+  if (userProfile && userProfile.next_order_discount_value > 0) {
+    if (userProfile.next_order_discount_type === 'percent') {
+      userDiscountAmount = (subTotal * (userProfile.next_order_discount_value / 100));
+    } else {
+      userDiscountAmount = userProfile.next_order_discount_value;
+    }
+    finalTotal = Math.max(0, subTotal - userDiscountAmount);
+  }
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data.user) {
-        setUser(data.user);
-        setCustomerData({
-          name: data.user.user_metadata?.full_name || '',
-          phone: data.user.user_metadata?.phone || '',
-          phone2: '',
-          address: data.user.user_metadata?.address || ''
-        });
-      }
-    };
-    if (isOpen) fetchUser();
-  }, [isOpen]);
+    if (userProfile) {
+      setCustomerData({
+        name: userProfile.full_name,
+        phone: userProfile.phone,
+        phone2: '',
+        address: userProfile.address
+      });
+    }
+  }, [userProfile]);
 
   const handleConfirmOrder = async () => {
-    if (!user) return alert('يرجى تسجيل الدخول لإتمام الطلب');
-    if (!customerData.name || !customerData.phone || !customerData.address) {
-      alert('يرجى ملء البيانات الأساسية للتوصيل');
-      return;
-    }
-
+    if (!userProfile) return alert('يرجى تسجيل الدخول');
     setIsSubmitting(true);
-
     try {
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert([{
-          user_id: user.id,
-          customer_name: customerData.name,
-          customer_phone: customerData.phone,
-          customer_phone_2: customerData.phone2,
-          customer_address: customerData.address,
-          total_price: total,
-          status: 'pending'
-        }])
-        .select().single();
+      const { data: order, error: orderError } = await supabase.from('orders').insert([{
+        user_id: userProfile.id,
+        customer_name: customerData.name,
+        customer_phone: customerData.phone,
+        customer_phone_2: customerData.phone2,
+        customer_address: customerData.address,
+        total_price: finalTotal,
+        discount_applied: userDiscountAmount,
+        status: 'pending'
+      }]).select().single();
 
       if (orderError) throw orderError;
+
+      // تصفير خصم المستخدم بعد استخدامه
+      if (userDiscountAmount > 0) {
+        await supabase.from('profiles').update({ 
+          next_order_discount_value: 0, 
+          next_order_discount_type: 'fixed' 
+        }).eq('id', userProfile.id);
+      }
 
       const orderItems = items.map(item => ({
         order_id: order.id,
         product_name: item.name,
         quantity: item.quantity,
-        price: item.price,
+        price: (userProfile?.is_wholesale && item.wholesale_price) ? item.wholesale_price : item.price,
         selected_color: item.selectedColor
       }));
 
-      const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
-      if (itemsError) throw itemsError;
-
+      await supabase.from('order_items').insert(orderItems);
       setIsSuccess(true);
       onClear();
-      setTimeout(() => {
-        setIsSuccess(false);
-        setShowCheckoutForm(false);
-        onClose();
-      }, 4000);
-
-    } catch (error: any) {
-      alert('حدث خطأ في إرسال الطلب: ' + error.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+      setTimeout(() => { setIsSuccess(false); onClose(); }, 3000);
+    } catch (e: any) { alert(e.message); }
+    finally { setIsSubmitting(false); }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-hidden">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity" onClick={onClose} />
-      <div className="absolute inset-y-0 left-0 max-w-full flex">
-        <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col">
-          <div className="flex items-center justify-between p-6 border-b">
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <ShoppingBag className="w-6 h-6 text-blue-600" />
-              {isSuccess ? 'تم الطلب بنجاح' : showCheckoutForm ? 'بيانات التوصيل' : 'سلة المشتريات'}
-            </h2>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-6 h-6" /></button>
-          </div>
+    <div className="fixed inset-0 z-[100]">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-y-0 left-0 w-full max-w-md bg-white shadow-2xl flex flex-col">
+        <div className="p-6 border-b flex items-center justify-between">
+          <h2 className="text-xl font-black flex items-center gap-2"><ShoppingBag className="text-blue-600"/> سلة المشتريات</h2>
+          <button onClick={onClose}><X/></button>
+        </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
-            {isSuccess ? (
-              <div className="h-full flex flex-col items-center justify-center text-center gap-6">
-                <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center text-green-600 animate-bounce"><CheckCircle2 className="w-12 h-12" /></div>
-                <div><h3 className="text-2xl font-black text-gray-900 mb-2">طلبك قيد المراجعة!</h3><p className="text-gray-500 font-medium px-8 leading-relaxed text-sm">شكراً لثقتك بمتجر أسماء. سنتصل بكِ فوراً لتأكيد الموعد.</p></div>
-              </div>
-            ) : !user ? (
-              <div className="h-full flex flex-col items-center justify-center text-center gap-6 p-8">
-                <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600"><ShoppingBag className="w-10 h-10" /></div>
-                <div><h3 className="text-xl font-black mb-2">تسجيل الدخول مطلوب</h3><p className="text-gray-500 text-sm mb-8">يجب تسجيل الدخول لتتمكني من إتمام الشراء.</p><button onClick={onOpenLogin} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-blue-700 transition-all">دخول / إنشاء حساب</button></div>
-              </div>
-            ) : !showCheckoutForm ? (
-              items.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4"><ShoppingBag className="w-16 h-16 opacity-20" /><p className="text-lg">السلة فارغة حالياً</p></div>
-              ) : (
-                <div className="space-y-6">
-                  {items.map((item, idx) => (
-                    <div key={`${item.id}-${idx}`} className="flex gap-4 border-b border-gray-50 pb-4">
-                      <img src={item.image} className="w-20 h-20 object-cover rounded-xl shadow-sm" alt="" />
-                      <div className="flex-1">
-                        <h3 className="font-bold text-gray-800 text-sm">{item.name}</h3>
-                        <p className="text-blue-600 font-black text-sm my-1">{item.price.toLocaleString()} ج.م</p>
-                        <div className="flex items-center justify-between mt-2">
-                          <div className="flex items-center bg-gray-50 rounded-xl px-2 border">
-                            <button onClick={() => onUpdateQuantity(item.id, item.selectedColor, -1)} className="p-1.5 hover:text-blue-600 transition"><Minus className="w-3.5 h-3.5" /></button>
-                            <span className="w-8 text-center font-black text-sm">{item.quantity}</span>
-                            <button onClick={() => onUpdateQuantity(item.id, item.selectedColor, 1)} className="p-1.5 hover:text-blue-600 transition"><Plus className="w-3.5 h-3.5" /></button>
-                          </div>
-                          <button onClick={() => onRemove(item.id, item.selectedColor)} className="text-gray-300 hover:text-red-500 transition"><Trash2 className="w-5 h-5" /></button>
-                        </div>
-                      </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {items.map((item, idx) => {
+            const priceToUse = (userProfile?.is_wholesale && item.wholesale_price) ? item.wholesale_price : item.price;
+            const catDiscount = categories.find(c => c.name === item.category)?.discount_percent || 0;
+            return (
+              <div key={idx} className="flex gap-4 border-b pb-4">
+                <img src={item.image} className="w-16 h-16 object-cover rounded-xl" />
+                <div className="flex-1">
+                  <h4 className="font-bold text-sm">{item.name}</h4>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-blue-600 font-black">{priceToUse.toLocaleString()} ج.م</span>
+                    {catDiscount > 0 && <span className="text-[9px] bg-red-50 text-red-500 p-1 rounded font-black">خصم قسم -{catDiscount}%</span>}
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-3 bg-gray-50 px-2 py-1 rounded-lg">
+                      <button onClick={() => onUpdateQuantity(item.id, item.selectedColor, -1)}><Minus className="w-3 h-3"/></button>
+                      <span className="font-black text-xs">{item.quantity}</span>
+                      <button onClick={() => onUpdateQuantity(item.id, item.selectedColor, 1)}><Plus className="w-3 h-3"/></button>
                     </div>
-                  ))}
+                    <button onClick={() => onRemove(item.id, item.selectedColor)} className="text-red-400"><Trash2 className="w-4 h-4"/></button>
+                  </div>
                 </div>
-              )
-            ) : (
-              <div className="space-y-5 py-2">
-                <div className="space-y-2"><label className="text-sm font-black text-gray-700">الاسم بالكامل</label><input type="text" className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold" value={customerData.name} onChange={(e) => setCustomerData({...customerData, name: e.target.value})} /></div>
-                <div className="space-y-2"><label className="text-sm font-black text-gray-700">رقم الهاتف</label><input type="tel" className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none text-left font-bold" value={customerData.phone} onChange={(e) => setCustomerData({...customerData, phone: e.target.value})} /></div>
-                <div className="space-y-2"><label className="text-sm font-black text-gray-700">العنوان بالتفصيل</label><textarea className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none h-28 resize-none font-bold" value={customerData.address} onChange={(e) => setCustomerData({...customerData, address: e.target.value})} /></div>
+              </div>
+            );
+          })}
+        </div>
+
+        {items.length > 0 && (
+          <div className="p-6 bg-gray-50 space-y-3">
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>الإجمالي قبل الخصم:</span>
+              <span>{subTotal.toLocaleString()} ج.م</span>
+            </div>
+            {userDiscountAmount > 0 && (
+              <div className="flex justify-between text-sm text-green-600 font-bold">
+                <span className="flex items-center gap-1"><Tag className="w-3 h-3"/> خصمك الخاص:</span>
+                <span>-{userDiscountAmount.toLocaleString()} ج.م</span>
               </div>
             )}
-          </div>
-
-          {items.length > 0 && !isSuccess && user && (
-            <div className="p-6 border-t bg-gray-50/50 backdrop-blur-md">
-              <div className="flex items-center justify-between mb-4"><span className="text-gray-500 font-bold text-sm">المبلغ الإجمالي:</span><span className="text-2xl font-black text-blue-600">{total.toLocaleString()} ج.م</span></div>
-              {!showCheckoutForm ? (
-                <button onClick={() => setShowCheckoutForm(true)} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-700 transition shadow-xl shadow-blue-100">إتمام الطلب</button>
-              ) : (
-                <div className="flex gap-2">
-                  <button disabled={isSubmitting} onClick={() => setShowCheckoutForm(false)} className="flex-1 bg-white border border-gray-200 text-gray-700 py-4 rounded-2xl font-black">رجوع</button>
-                  <button disabled={isSubmitting} onClick={handleConfirmOrder} className="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-100">
-                    {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'تأكيد وشراء'}
-                  </button>
-                </div>
-              )}
+            <div className="flex justify-between text-2xl font-black text-blue-600 border-t pt-3">
+              <span>المجموع:</span>
+              <span>{finalTotal.toLocaleString()} ج.م</span>
             </div>
-          )}
-        </div>
+            {!showCheckoutForm ? (
+              <button onClick={() => setShowCheckoutForm(true)} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg">إتمام الطلب</button>
+            ) : (
+              <button disabled={isSubmitting} onClick={handleConfirmOrder} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2">
+                {isSubmitting ? <Loader2 className="animate-spin"/> : 'تأكيد الطلب'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
