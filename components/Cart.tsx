@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
-import { X, Minus, Plus, Trash2, ShoppingBag, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Minus, Plus, Trash2, ShoppingBag, CheckCircle2, LogIn, Loader2, Phone } from 'lucide-react';
 import { CartItem } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface CartProps {
   isOpen: boolean;
@@ -9,34 +10,72 @@ interface CartProps {
   items: CartItem[];
   onUpdateQuantity: (id: number, delta: number) => void;
   onRemove: (id: number) => void;
+  onClear: () => void;
+  onOpenLogin?: () => void;
 }
 
-const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, onRemove }) => {
+const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, onRemove, onClear, onOpenLogin }) => {
   const [showCheckoutForm, setShowCheckoutForm] = useState(false);
-  const [customerData, setCustomerData] = useState({ name: '', phone: '', address: '' });
+  const [customerData, setCustomerData] = useState({ name: '', phone: '', phone2: '', address: '' });
+  const [user, setUser] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
   
   const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-  const handleWhatsAppCheckout = () => {
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+  }, []);
+
+  const handleConfirmOrder = async () => {
+    if (!user) return alert('يرجى تسجيل الدخول لإتمام الطلب');
     if (!customerData.name || !customerData.phone || !customerData.address) {
-      alert('يرجى ملء كافة البيانات لإتمام الطلب');
+      alert('يرجى ملء البيانات الأساسية (الاسم، الهاتف، العنوان) لإتمام الطلب');
       return;
     }
 
-    const storePhone = "201000000000"; // استبدل برقم هاتفك الحقيقي
-    let message = `*طلب جديد من متجر أسماء*%0A%0A`;
-    message += `*الاسم:* ${customerData.name}%0A`;
-    message += `*الهاتف:* ${customerData.phone}%0A`;
-    message += `*العنوان:* ${customerData.address}%0A%0A`;
-    message += `*المنتجات:*%0A`;
-    
-    items.forEach((item, index) => {
-      message += `${index + 1}. ${item.name} ${item.selectedColor ? `(لون: ${item.selectedColor})` : ''} x ${item.quantity} = ${(item.price * item.quantity).toLocaleString()} ج.م%0A`;
-    });
+    setIsSubmitting(true);
+    try {
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert([{
+          user_id: user.id,
+          customer_name: customerData.name,
+          customer_phone: customerData.phone,
+          customer_phone_2: customerData.phone2, // إضافة الهاتف الإضافي
+          customer_address: customerData.address,
+          total_price: total,
+          status: 'pending'
+        }])
+        .select()
+        .single();
 
-    message += `%0A*الإجمالي النهائي: ${total.toLocaleString()} ج.م*%0A%0Aشكراً لاختياركم متجر أسماء للأدوات المنزلية.`;
-    
-    window.open(`https://wa.me/${storePhone}?text=${message}`, '_blank');
+      if (orderError) throw orderError;
+
+      const orderItems = items.map(item => ({
+        order_id: order.id,
+        product_name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        selected_color: item.selectedColor
+      }));
+
+      const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
+      if (itemsError) throw itemsError;
+
+      setIsSuccess(true);
+      onClear();
+      setTimeout(() => {
+        setIsSuccess(false);
+        setShowCheckoutForm(false);
+        onClose();
+      }, 4000);
+
+    } catch (error: any) {
+      alert('خطأ أثناء إرسال الطلب: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -50,7 +89,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
           <div className="flex items-center justify-between p-6 border-b">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <ShoppingBag className="w-6 h-6 text-blue-600" />
-              {showCheckoutForm ? 'بيانات التوصيل' : 'سلة المشتريات'}
+              {isSuccess ? 'تم الطلب بنجاح' : showCheckoutForm ? 'بيانات التوصيل' : 'سلة المشتريات'}
             </h2>
             <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full">
               <X className="w-6 h-6" />
@@ -58,7 +97,33 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
-            {!showCheckoutForm ? (
+            {isSuccess ? (
+              <div className="h-full flex flex-col items-center justify-center text-center gap-6">
+                <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center text-green-600 animate-bounce">
+                  <CheckCircle2 className="w-12 h-12" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-gray-900 mb-2">طلبك قيد المراجعة!</h3>
+                  <p className="text-gray-500 font-medium px-8 leading-relaxed">شكراً لثقتك بمتجر أسماء. سنقوم بالتواصل معكِ لتأكيد الطلب وشحنه في أقرب وقت.</p>
+                </div>
+              </div>
+            ) : !user ? (
+              <div className="h-full flex flex-col items-center justify-center text-center gap-6 p-8">
+                <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600">
+                  <ShoppingBag className="w-10 h-10" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black mb-2">تسجيل الدخول مطلوب</h3>
+                  <p className="text-gray-500 text-sm mb-8">يجب تسجيل الدخول لتتمكني من حفظ طلباتك ومتابعتها لاحقاً وإتمام الشراء.</p>
+                  <button 
+                    onClick={onOpenLogin}
+                    className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all"
+                  >
+                    تسجيل الدخول / إنشاء حساب
+                  </button>
+                </div>
+              </div>
+            ) : !showCheckoutForm ? (
               items.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
                   <ShoppingBag className="w-16 h-16 opacity-20" />
@@ -68,18 +133,18 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                 <div className="space-y-6">
                   {items.map((item) => (
                     <div key={`${item.id}-${item.selectedColor}`} className="flex gap-4 border-b border-gray-50 pb-4">
-                      <img src={item.image} className="w-20 h-20 object-cover rounded-xl" alt="" />
+                      <img src={item.image} className="w-20 h-20 object-cover rounded-xl shadow-sm" alt="" />
                       <div className="flex-1">
                         <h3 className="font-bold text-gray-800">{item.name}</h3>
-                        {item.selectedColor && <p className="text-xs text-gray-400 font-bold mb-1">اللون: {item.selectedColor}</p>}
-                        <p className="text-blue-600 font-bold mb-2">{item.price.toLocaleString()} ج.م</p>
+                        {item.selectedColor && <p className="text-[10px] text-gray-400 font-bold mb-1">اللون: {item.selectedColor}</p>}
+                        <p className="text-blue-600 font-black mb-2">{item.price.toLocaleString()} ج.م</p>
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center bg-gray-100 rounded-lg px-2">
-                            <button onClick={() => onUpdateQuantity(item.id, -1)} className="p-1 hover:text-blue-600"><Minus className="w-4 h-4" /></button>
-                            <span className="w-8 text-center font-bold">{item.quantity}</span>
-                            <button onClick={() => onUpdateQuantity(item.id, 1)} className="p-1 hover:text-blue-600"><Plus className="w-4 h-4" /></button>
+                          <div className="flex items-center bg-gray-50 rounded-xl px-2 border">
+                            <button onClick={() => onUpdateQuantity(item.id, -1)} className="p-1.5 hover:text-blue-600 transition"><Minus className="w-3.5 h-3.5" /></button>
+                            <span className="w-8 text-center font-black text-sm">{item.quantity}</span>
+                            <button onClick={() => onUpdateQuantity(item.id, 1)} className="p-1.5 hover:text-blue-600 transition"><Plus className="w-3.5 h-3.5" /></button>
                           </div>
-                          <button onClick={() => onRemove(item.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-5 h-5" /></button>
+                          <button onClick={() => onRemove(item.id)} className="text-gray-300 hover:text-red-500 transition"><Trash2 className="w-5 h-5" /></button>
                         </div>
                       </div>
                     </div>
@@ -87,32 +152,46 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                 </div>
               )
             ) : (
-              <div className="space-y-5 py-4">
+              <div className="space-y-5 py-2">
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-700">الاسم الكامل</label>
+                  <label className="text-sm font-black text-gray-700">الاسم بالكامل</label>
                   <input 
                     type="text" 
-                    className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none" 
-                    placeholder="مثال: أسماء محمد"
+                    className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold" 
+                    placeholder="أسماء محمد"
                     value={customerData.name}
                     onChange={(e) => setCustomerData({...customerData, name: e.target.value})}
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-700">رقم الهاتف (واتساب)</label>
-                  <input 
-                    type="tel" 
-                    className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none text-left" 
-                    placeholder="01xxxxxxxxx"
-                    value={customerData.phone}
-                    onChange={(e) => setCustomerData({...customerData, phone: e.target.value})}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-black text-gray-700">رقم الهاتف (أساسي)</label>
+                    <input 
+                      type="tel" 
+                      className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none text-left font-bold" 
+                      placeholder="01xxxxxxxxx"
+                      value={customerData.phone}
+                      onChange={(e) => setCustomerData({...customerData, phone: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-black text-gray-700 flex items-center gap-1.5">
+                      هاتف إضافي <span className="text-[10px] text-gray-400">(اختياري)</span>
+                    </label>
+                    <input 
+                      type="tel" 
+                      className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none text-left font-bold" 
+                      placeholder="رقم آخر للطوارئ"
+                      value={customerData.phone2}
+                      onChange={(e) => setCustomerData({...customerData, phone2: e.target.value})}
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-700">عنوان التوصيل بالتفصيل</label>
+                  <label className="text-sm font-black text-gray-700">العنوان بالتفصيل</label>
                   <textarea 
-                    className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none h-32 resize-none" 
-                    placeholder="المحافظة، المدينة، اسم الشارع، رقم العقار..."
+                    className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none h-28 resize-none font-bold" 
+                    placeholder="اكتبي العنوان بالتفصيل (المحافظة، المنطقة، الشارع، رقم المنزل)..."
                     value={customerData.address}
                     onChange={(e) => setCustomerData({...customerData, address: e.target.value})}
                   />
@@ -121,33 +200,34 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
             )}
           </div>
 
-          {items.length > 0 && (
-            <div className="p-6 border-t bg-gray-50">
+          {items.length > 0 && !isSuccess && user && (
+            <div className="p-6 border-t bg-gray-50/50 backdrop-blur-md">
               <div className="flex items-center justify-between mb-4">
-                <span className="text-gray-600 font-medium">الإجمالي:</span>
-                <span className="text-2xl font-black text-gray-900">{total.toLocaleString()} ج.م</span>
+                <span className="text-gray-500 font-bold">المبلغ الإجمالي:</span>
+                <span className="text-2xl font-black text-blue-600">{total.toLocaleString()} ج.م</span>
               </div>
               {!showCheckoutForm ? (
                 <button 
                   onClick={() => setShowCheckoutForm(true)}
-                  className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-blue-700 transition shadow-lg"
+                  className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-700 transition shadow-xl shadow-blue-100"
                 >
-                  الاستمرار لبيانات الشحن
+                  إتمام الطلب
                 </button>
               ) : (
                 <div className="flex gap-2">
                    <button 
+                    disabled={isSubmitting}
                     onClick={() => setShowCheckoutForm(false)}
-                    className="flex-1 bg-gray-200 text-gray-700 py-4 rounded-2xl font-bold"
+                    className="flex-1 bg-white border border-gray-200 text-gray-700 py-4 rounded-2xl font-black"
                   >
                     رجوع
                   </button>
                   <button 
-                    onClick={handleWhatsAppCheckout}
-                    className="flex-[2] bg-green-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-green-700 shadow-lg"
+                    disabled={isSubmitting}
+                    onClick={handleConfirmOrder}
+                    className="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-100"
                   >
-                    <MessageSquare className="w-5 h-5" />
-                    طلب عبر واتساب
+                    {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'تأكيد وشراء'}
                   </button>
                 </div>
               )}

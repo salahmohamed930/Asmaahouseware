@@ -2,10 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Package, ShoppingBag, Plus, Trash2, 
-  TrendingUp, LogOut, Loader2, Image as ImageIcon, 
-  Link as LinkIcon, Fingerprint, Palette, Lock, X
+  LogOut, Loader2, Palette, Lock, X, ClipboardList, CheckCircle, Truck, Clock, AlertCircle
 } from 'lucide-react';
-import { Product } from '../types';
+import { Product, Order } from '../types';
 import { supabase } from '../lib/supabase';
 import Logo from './Logo';
 
@@ -16,8 +15,9 @@ interface AdminDashboardProps {
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [session, setSession] = useState<any>(null);
   const [authData, setAuthData] = useState({ email: '', password: '' });
-  const [activeTab, setActiveTab] = useState<'overview' | 'products'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders'>('overview');
   const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
@@ -32,7 +32,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const checkUser = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     setSession(session);
-    if (session) fetchProducts();
+    if (session) {
+      fetchProducts();
+      fetchOrders();
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -46,15 +49,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     else {
       setSession(data.session);
       fetchProducts();
+      fetchOrders();
     }
     setIsLoading(false);
   };
 
   const fetchProducts = async () => {
-    setIsLoading(true);
     const { data } = await supabase.from('products').select('*').order('id', { ascending: false });
     if (data) setProducts(data);
-    setIsLoading(false);
+  };
+
+  const fetchOrders = async () => {
+    const { data } = await supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false });
+    if (data) setOrders(data);
+  };
+
+  const updateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
+    const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
+    if (!error) fetchOrders();
+    else alert('فشل تحديث الحالة');
   };
 
   const handleAddProduct = async () => {
@@ -70,6 +83,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
       setNewProduct({...newProduct, colors: [...(newProduct.colors || []), colorInput.trim()]});
       setColorInput('');
     }
+  };
+
+  const statusMap = {
+    pending: { label: 'جديد', color: 'bg-orange-100 text-orange-600', icon: Clock },
+    processing: { label: 'قيد التجهيز', color: 'bg-blue-100 text-blue-600', icon: ClipboardList },
+    shipped: { label: 'تم الشحن', color: 'bg-purple-100 text-purple-600', icon: Truck },
+    delivered: { label: 'تم الاستلام', color: 'bg-green-100 text-green-600', icon: CheckCircle },
+    cancelled: { label: 'ملغي', color: 'bg-red-100 text-red-600', icon: AlertCircle },
   };
 
   if (!session) {
@@ -100,15 +121,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50 text-right" dir="rtl">
+    <div className="flex min-h-screen bg-gray-50 text-right font-['Tajawal']" dir="rtl">
+      {/* Sidebar */}
       <aside className="w-72 bg-white border-l shadow-sm hidden md:flex flex-col">
         <div className="p-8 border-b"><Logo /></div>
         <nav className="flex-1 p-6 space-y-2">
-          <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl ${activeTab === 'overview' ? 'bg-blue-600 text-white' : 'text-gray-500'}`}>
+          <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition ${activeTab === 'overview' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-50'}`}>
             <LayoutDashboard className="w-5 h-5" /> <span className="font-bold">الإحصائيات</span>
           </button>
-          <button onClick={() => setActiveTab('products')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl ${activeTab === 'products' ? 'bg-blue-600 text-white' : 'text-gray-500'}`}>
+          <button onClick={() => setActiveTab('products')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition ${activeTab === 'products' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-50'}`}>
             <Package className="w-5 h-5" /> <span className="font-bold">المنتجات</span>
+          </button>
+          <button onClick={() => setActiveTab('orders')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition ${activeTab === 'orders' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-50'}`}>
+            <ShoppingBag className="w-5 h-5" /> <span className="font-bold">الطلبات</span>
           </button>
         </nav>
         <div className="p-6 border-t">
@@ -118,44 +143,62 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         </div>
       </aside>
 
-      <main className="flex-1 p-8">
-        <div className="flex justify-between items-center mb-8">
-           <h2 className="text-2xl font-black">{activeTab === 'overview' ? 'نظرة عامة' : 'إدارة المنتجات'}</h2>
+      {/* Main Content */}
+      <main className="flex-1 p-8 overflow-y-auto h-screen">
+        <div className="flex justify-between items-center mb-10">
+           <h2 className="text-3xl font-black">{activeTab === 'overview' ? 'نظرة عامة' : activeTab === 'products' ? 'إدارة المنتجات' : 'إدارة الطلبات'}</h2>
            {activeTab === 'products' && (
-             <button onClick={() => setIsAddModalOpen(true)} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2">
+             <button onClick={() => setIsAddModalOpen(true)} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-2 shadow-lg hover:bg-blue-700 transition">
                <Plus className="w-5 h-5" /> منتج جديد
              </button>
            )}
         </div>
 
+        {activeTab === 'overview' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="bg-white p-8 rounded-[2rem] border shadow-sm">
+              <p className="text-gray-500 font-bold mb-2">إجمالي المنتجات</p>
+              <h4 className="text-4xl font-black text-blue-600">{products.length}</h4>
+            </div>
+            <div className="bg-white p-8 rounded-[2rem] border shadow-sm">
+              <p className="text-gray-500 font-bold mb-2">إجمالي الطلبات</p>
+              <h4 className="text-4xl font-black text-blue-600">{orders.length}</h4>
+            </div>
+            <div className="bg-white p-8 rounded-[2rem] border shadow-sm">
+              <p className="text-gray-500 font-bold mb-2">طلبات بانتظار الشحن</p>
+              <h4 className="text-4xl font-black text-orange-500">{orders.filter(o => o.status === 'pending').length}</h4>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'products' && (
-           <div className="bg-white rounded-3xl border overflow-hidden">
-             <table className="w-full">
+           <div className="bg-white rounded-[2rem] border shadow-sm overflow-hidden">
+             <table className="w-full text-right">
                <thead className="bg-gray-50 border-b">
                  <tr>
-                   <th className="px-6 py-4">المنتج</th>
-                   <th className="px-6 py-4">الفئة</th>
-                   <th className="px-6 py-4">السعر</th>
-                   <th className="px-6 py-4">الألوان</th>
-                   <th className="px-6 py-4">حذف</th>
+                   <th className="px-8 py-5">المنتج</th>
+                   <th className="px-8 py-5">الفئة</th>
+                   <th className="px-8 py-5">السعر</th>
+                   <th className="px-8 py-5">الألوان</th>
+                   <th className="px-8 py-5 text-center">إجراءات</th>
                  </tr>
                </thead>
                <tbody className="divide-y">
                  {products.map(p => (
-                   <tr key={p.id} className="hover:bg-gray-50">
-                     <td className="px-6 py-4 flex items-center gap-3">
-                       <img src={p.image} className="w-12 h-12 rounded-lg object-cover" alt="" />
-                       <span className="font-bold">{p.name}</span>
+                   <tr key={p.id} className="hover:bg-gray-50 transition">
+                     <td className="px-8 py-5 flex items-center gap-4">
+                       <img src={p.image} className="w-14 h-14 rounded-2xl object-cover shadow-sm" alt="" />
+                       <span className="font-black text-gray-800">{p.name}</span>
                      </td>
-                     <td className="px-6 py-4 text-sm font-bold">{p.category}</td>
-                     <td className="px-6 py-4 font-black text-blue-600">{p.price} ج.م</td>
-                     <td className="px-6 py-4">
-                       <div className="flex gap-1">
-                         {p.colors?.map(c => <span key={c} className="w-3 h-3 rounded-full border" style={{backgroundColor: c}}></span>)}
+                     <td className="px-8 py-5 text-sm font-bold text-gray-500">{p.category}</td>
+                     <td className="px-8 py-5 font-black text-blue-600">{p.price.toLocaleString()} ج.م</td>
+                     <td className="px-8 py-5">
+                       <div className="flex gap-1.5">
+                         {p.colors?.map(c => <span key={c} className="w-4 h-4 rounded-full border border-gray-200" style={{backgroundColor: c}}></span>)}
                        </div>
                      </td>
-                     <td className="px-6 py-4">
-                        <button className="text-red-400 hover:text-red-600"><Trash2 className="w-5 h-5" /></button>
+                     <td className="px-8 py-5 text-center">
+                        <button className="p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"><Trash2 className="w-5 h-5" /></button>
                      </td>
                    </tr>
                  ))}
@@ -163,29 +206,85 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
              </table>
            </div>
         )}
+
+        {activeTab === 'orders' && (
+          <div className="space-y-6">
+            {orders.length === 0 ? (
+              <div className="bg-white p-20 rounded-[2rem] border text-center text-gray-400">لا يوجد طلبات حالياً</div>
+            ) : (
+              orders.map(order => (
+                <div key={order.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm hover:shadow-md transition">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                    <div>
+                      <h3 className="text-xl font-black mb-1">طلب #{order.id.slice(0, 8)}</h3>
+                      <p className="text-gray-500 font-bold text-sm">التاريخ: {new Date(order.created_at).toLocaleDateString('ar-EG')}</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                       <div className={`px-5 py-2 rounded-2xl flex items-center gap-2 font-black text-sm ${statusMap[order.status].color}`}>
+                          {React.createElement(statusMap[order.status].icon, { className: 'w-4 h-4' })}
+                          {statusMap[order.status].label}
+                       </div>
+                       <select 
+                        value={order.status}
+                        onChange={(e) => updateOrderStatus(order.id, e.target.value as any)}
+                        className="bg-gray-100 p-2 rounded-xl text-sm font-bold outline-none"
+                       >
+                         {Object.keys(statusMap).map(s => <option key={s} value={s}>{statusMap[s as keyof typeof statusMap].label}</option>)}
+                       </select>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t pt-6">
+                    <div>
+                      <p className="text-xs font-black text-gray-400 uppercase mb-3">بيانات العميل</p>
+                      <p className="font-black text-gray-800">{order.customer_name}</p>
+                      <p className="text-sm font-bold text-gray-600">{order.customer_phone}</p>
+                      <p className="text-sm text-gray-500 mt-1">{order.customer_address}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-gray-400 uppercase mb-3">تفاصيل المشتريات</p>
+                      <div className="space-y-2">
+                        {order.items?.map((item: any) => (
+                          <div key={item.id} className="flex justify-between text-sm font-bold">
+                            <span>{item.product_name} x {item.quantity}</span>
+                            <span className="text-blue-600">{item.price.toLocaleString()} ج.م</span>
+                          </div>
+                        ))}
+                        <div className="border-t pt-2 flex justify-between font-black text-lg">
+                          <span>الإجمالي:</span>
+                          <span className="text-blue-600">{order.total_price.toLocaleString()} ج.م</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </main>
 
-      {/* Add Modal */}
+      {/* Product Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
           <div className="relative bg-white w-full max-w-2xl rounded-[2.5rem] p-10 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-2xl font-black mb-8">إضافة منتج جديد</h3>
+            <h3 className="text-2xl font-black mb-8">إضافة منتج جديد للمتجر</h3>
             <div className="space-y-4">
-              <input type="text" placeholder="اسم المنتج" className="w-full p-4 border rounded-2xl font-bold" onChange={e => setNewProduct({...newProduct, name: e.target.value})} />
+              <input type="text" placeholder="اسم المنتج" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" onChange={e => setNewProduct({...newProduct, name: e.target.value})} />
               <div className="grid grid-cols-2 gap-4">
-                <input type="number" placeholder="السعر" className="w-full p-4 border rounded-2xl font-bold" onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} />
-                <select className="w-full p-4 border rounded-2xl font-bold" onChange={e => setNewProduct({...newProduct, category: e.target.value as any})}>
+                <input type="number" placeholder="السعر" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} />
+                <select className="w-full p-4 border rounded-2xl font-bold bg-gray-50" onChange={e => setNewProduct({...newProduct, category: e.target.value as any})}>
                   <option>أدوات المطبخ</option><option>الأجهزة الكهربائية</option><option>الديكور</option><option>أواني التقديم</option>
                 </select>
               </div>
-              <input type="text" placeholder="رابط الصورة الأساسية" className="w-full p-4 border rounded-2xl font-bold" onChange={e => setNewProduct({...newProduct, image: e.target.value})} />
+              <input type="text" placeholder="رابط صورة المنتج (URL)" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" onChange={e => setNewProduct({...newProduct, image: e.target.value})} />
               
               <div className="space-y-2">
                 <label className="text-sm font-bold flex items-center gap-2"><Palette className="w-4 h-4" /> الألوان المتوفرة</label>
                 <div className="flex gap-2">
-                  <input type="text" placeholder="اسم اللون أو كود (مثل: أحمر)" className="flex-1 p-4 border rounded-2xl font-bold" value={colorInput} onChange={e => setColorInput(e.target.value)} />
-                  <button onClick={addColor} className="bg-gray-100 px-6 rounded-2xl font-bold hover:bg-gray-200">إضافة لون</button>
+                  <input type="text" placeholder="اسم اللون أو كود" className="flex-1 p-4 border rounded-2xl font-bold bg-gray-50" value={colorInput} onChange={e => setColorInput(e.target.value)} />
+                  <button onClick={addColor} className="bg-blue-600 text-white px-6 rounded-2xl font-bold hover:bg-blue-700">أضف</button>
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {newProduct.colors?.map(c => (
@@ -196,8 +295,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 </div>
               </div>
 
-              <textarea placeholder="وصف المنتج" className="w-full p-4 border rounded-2xl font-bold h-32" onChange={e => setNewProduct({...newProduct, description: e.target.value})} />
-              <button onClick={handleAddProduct} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-lg mt-4">إضافة المنتج للمتجر</button>
+              <textarea placeholder="وصف تفصيلي للمنتج..." className="w-full p-4 border rounded-2xl font-bold h-32 bg-gray-50" onChange={e => setNewProduct({...newProduct, description: e.target.value})} />
+              <button onClick={handleAddProduct} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-lg mt-4 shadow-xl shadow-blue-100">نشر المنتج في المتجر</button>
             </div>
           </div>
         </div>

@@ -6,8 +6,8 @@ export interface Product {
   price: number;
   description: string;
   image: string;
-  images?: string[]; // صور إضافية
-  colors?: string[]; // ألوان المنتج
+  images?: string[];
+  colors?: string[];
   rating: number;
   reviews: number;
   created_at?: string;
@@ -15,18 +15,29 @@ export interface Product {
 
 export interface CartItem extends Product {
   quantity: number;
-  selectedColor?: string; // اللون الذي اختاره العميل
+  selectedColor?: string;
 }
 
 export interface Order {
   id: string;
-  customerName: string;
-  customerPhone: string;
-  customerAddress: string;
-  total: number;
-  status: 'pending' | 'shipped' | 'delivered';
-  date: string;
-  items: CartItem[];
+  user_id: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_phone_2?: string;
+  customer_address: string;
+  total_price: number;
+  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  created_at: string;
+  items?: OrderItem[];
+}
+
+export interface OrderItem {
+  id: number;
+  order_id: string;
+  product_name: string;
+  quantity: number;
+  price: number;
+  selected_color?: string;
 }
 
 export type Category = 'الكل' | 'أدوات المطبخ' | 'الأجهزة الكهربائية' | 'الديكور' | 'أواني التقديم';
