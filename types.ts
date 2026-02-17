@@ -8,6 +8,8 @@ export interface Product {
   image: string;
   rating: number;
   reviews: number;
+  // Supabase metadata field
+  created_at?: string;
 }
 
 export interface CartItem extends Product {
