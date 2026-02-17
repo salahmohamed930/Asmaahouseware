@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, Package, ShoppingBag, Plus, Trash2, 
-  LogOut, Loader2, Palette, Lock, X, ClipboardList, CheckCircle, Truck, Clock, AlertCircle, Upload, Image as ImageIcon
+  LogOut, Loader2, Palette, Lock, X, ClipboardList, CheckCircle, Truck, Clock, AlertCircle, Upload, Image as ImageIcon, Eye, EyeOff
 } from 'lucide-react';
 import { Product, Order } from '../types';
 import { supabase } from '../lib/supabase';
@@ -31,7 +31,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     images: [], 
     colors: [], 
     rating: 5, 
-    reviews: 0
+    reviews: 0,
+    is_visible: true
   });
 
   const [colorInput, setColorInput] = useState('#2563eb');
@@ -81,6 +82,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     else alert('فشل تحديث الحالة');
   };
 
+  const toggleVisibility = async (product: Product) => {
+    const newStatus = product.is_visible === false; // If currently false, make true. If undefined/true, make false.
+    const { error } = await supabase.from('products').update({ is_visible: newStatus }).eq('id', product.id);
+    if (!error) fetchProducts();
+    else alert('فشل تحديث حالة الظهور');
+  };
+
+  const deleteProduct = async (id: number) => {
+    if (!confirm('هل أنتِ متأكدة من حذف هذا الصنف نهائياً؟')) return;
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (!error) fetchProducts();
+    else alert('فشل حذف المنتج');
+  };
+
   const handleAddProduct = async () => {
     if (!newProduct.image && (!newProduct.images || newProduct.images.length === 0)) {
       alert('يرجى إضافة صورة واحدة على الأقل للمنتج');
@@ -94,7 +109,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     if (!error) {
       setIsAddModalOpen(false);
       setNewProduct({
-        name: '', category: 'أدوات المطبخ', price: 0, description: '', image: '', images: [], colors: [], rating: 5, reviews: 0
+        name: '', category: 'أدوات المطبخ', price: 0, description: '', image: '', images: [], colors: [], rating: 5, reviews: 0, is_visible: true
       });
       fetchProducts();
     } else alert(error.message);
@@ -122,7 +137,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     setNewProduct({
       ...newProduct,
       images: newImages,
-      image: newImages[0] // تعيين الصورة الأولى كصورة أساسية تلقائياً
+      image: newImages[0]
     });
   };
 
@@ -233,16 +248,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
              <table className="w-full text-right">
                <thead className="bg-gray-50 border-b">
                  <tr>
-                   <th className="px-8 py-5">المنتج</th>
-                   <th className="px-8 py-5">الفئة</th>
-                   <th className="px-8 py-5">السعر</th>
-                   <th className="px-8 py-5">الألوان</th>
-                   <th className="px-8 py-5 text-center">إجراءات</th>
+                   <th className="px-8 py-5 text-sm font-black text-gray-400">المنتج</th>
+                   <th className="px-8 py-5 text-sm font-black text-gray-400">الفئة</th>
+                   <th className="px-8 py-5 text-sm font-black text-gray-400">السعر</th>
+                   <th className="px-8 py-5 text-sm font-black text-gray-400">الحالة</th>
+                   <th className="px-8 py-5 text-sm font-black text-gray-400 text-center">إجراءات</th>
                  </tr>
                </thead>
                <tbody className="divide-y">
                  {products.map(p => (
-                   <tr key={p.id} className="hover:bg-gray-50 transition">
+                   <tr key={p.id} className={`hover:bg-gray-50 transition ${p.is_visible === false ? 'opacity-50 grayscale-[0.5]' : ''}`}>
                      <td className="px-8 py-5 flex items-center gap-4">
                        <img src={p.image} className="w-14 h-14 rounded-2xl object-cover shadow-sm" alt="" />
                        <span className="font-black text-gray-800">{p.name}</span>
@@ -250,12 +265,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                      <td className="px-8 py-5 text-sm font-bold text-gray-500">{p.category}</td>
                      <td className="px-8 py-5 font-black text-blue-600">{p.price.toLocaleString()} ج.م</td>
                      <td className="px-8 py-5">
-                       <div className="flex gap-1.5">
-                         {p.colors?.map(c => <span key={c} className="w-4 h-4 rounded-full border border-gray-200" style={{backgroundColor: c}}></span>)}
-                       </div>
+                       <span className={`px-3 py-1 rounded-full text-[10px] font-black ${p.is_visible === false ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-600'}`}>
+                         {p.is_visible === false ? 'مخفي من العرض' : 'معروض للزبائن'}
+                       </span>
                      </td>
-                     <td className="px-8 py-5 text-center">
-                        <button className="p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"><Trash2 className="w-5 h-5" /></button>
+                     <td className="px-8 py-5 text-center flex items-center justify-center gap-2">
+                        <button 
+                          onClick={() => toggleVisibility(p)}
+                          className={`p-3 rounded-xl transition ${p.is_visible === false ? 'text-gray-400 bg-gray-100' : 'text-blue-600 bg-blue-50'}`}
+                          title={p.is_visible === false ? 'إظهار المنتج' : 'إخفاء المنتج من المتجر'}
+                        >
+                          {p.is_visible === false ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                        <button 
+                          onClick={() => deleteProduct(p.id)}
+                          className="p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
+                          title="حذف نهائي"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
                      </td>
                    </tr>
                  ))}

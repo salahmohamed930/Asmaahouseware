@@ -10,6 +10,7 @@ export interface Product {
   colors?: string[];
   rating: number;
   reviews: number;
+  is_visible?: boolean;
   created_at?: string;
 }
 

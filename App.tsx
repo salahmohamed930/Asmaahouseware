@@ -91,7 +91,8 @@ const App: React.FC = () => {
     let result = products.filter(p => {
       const catMatch = activeCategory === 'الكل' || p.category === activeCategory;
       const priceMatch = p.price <= maxPrice;
-      return catMatch && priceMatch;
+      const visibilityMatch = p.is_visible !== false; // Only show if not explicitly hidden
+      return catMatch && priceMatch && visibilityMatch;
     });
     if (sortBy === 'price-low') result.sort((a, b) => a.price - b.price);
     if (sortBy === 'price-high') result.sort((a, b) => b.price - a.price);
