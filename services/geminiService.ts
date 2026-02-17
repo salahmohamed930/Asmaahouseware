@@ -4,30 +4,35 @@ import { PRODUCTS } from "../constants";
 
 export const getGeminiRecommendation = async (userQuery: string) => {
   try {
-    // Initializing the Gemini API client using the environment variable directly as per guidelines.
-    // Assume process.env.API_KEY is pre-configured and valid.
+    // التأكد من استخدام مفتاح API من البيئة المحيطة مباشرة
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    const productListString = PRODUCTS.map(p => `${p.id}: ${p.name} (${p.category}) - ${p.price} EGP`).join('\n');
+    // تحويل قائمة المنتجات لنص ليتمكن النموذج من فهم المخزون
+    const productListString = PRODUCTS.map(p => `- [ID: ${p.id}] ${p.name} (${p.category}) بسعر ${p.price} ج.م`).join('\n');
     
-    // Using 'gemini-3-flash-preview' for basic text-based product recommendation tasks.
+    // بناء الطلب مع تعريف الهوية "رشا"
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `بناءً على طلب المستخدم التالي: "${userQuery}"، يرجى تقديم توصية من قائمة المنتجات المتوفرة لدينا:
+      contents: `أنتِ "رشا"، المساعدة الذكية المتخصصة في متجر "أسماء للأدوات المنزلية". 
+      مهمتك هي مساعدة العميلات والعملاء في اختيار أفضل الأدوات المنزلية وأجهزة المطبخ.
+      
+      قائمة المنتجات المتوفرة لدينا حالياً:
       ${productListString}
       
-      اجعل الرد ودوداً وباللغة العربية، واقترح أفضل 2-3 منتجات تناسب طلبه مع شرح بسيط لماذا اخترتها.`,
+      بناءً على طلب العميل التالي: "${userQuery}"
+      يرجى الرد بأسلوب ودي، لبق، واحترافي. اقترحي منتجين أو ثلاثة كحد أقصى مع توضيح سبب اختيارك لكل منها بناءً على الميزانية أو الاحتياج المذكور. 
+      إذا لم تجدي منتجاً مطابقاً تماماً، اقترحي الأقرب له من فئته.`,
       config: {
-        temperature: 0.7,
-        topK: 64,
-        topP: 0.95,
+        temperature: 0.8,
+        topK: 40,
+        topP: 0.9,
       }
     });
 
-    // Directly accessing the .text property from GenerateContentResponse (not a method).
+    // الوصول للرد النصي مباشرة وفقاً لإرشادات SDK
     return response.text;
   } catch (error) {
-    console.error("Gemini AI Error:", error);
-    return "عذراً، حدث خطأ أثناء محاولة الحصول على توصيات الذكاء الاصطناعي. يرجى المحاولة مرة أخرى.";
+    console.error("Gemini API Error (Rasha):", error);
+    return "عذراً، يبدو أنني أواجه صعوبة بسيطة في الاتصال بالخادم. أنا رشا، وسأكون معكِ فور استقرار الاتصال. يرجى المحاولة مرة أخرى.";
   }
 };
