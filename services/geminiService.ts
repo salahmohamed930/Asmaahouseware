@@ -2,11 +2,15 @@
 import { GoogleGenAI } from "@google/genai";
 import { PRODUCTS } from "../constants";
 
-// Fix: Strictly following SDK guidelines to use new GoogleGenAI({apiKey: process.env.API_KEY})
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export const getGeminiRecommendation = async (userQuery: string) => {
   try {
+    // Initialize inside the function to be safer in different environments
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      throw new Error("API Key is missing");
+    }
+    
+    const ai = new GoogleGenAI({ apiKey });
     const productListString = PRODUCTS.map(p => `${p.id}: ${p.name} (${p.category}) - ${p.price} EGP`).join('\n');
     
     const response = await ai.models.generateContent({
@@ -22,7 +26,6 @@ export const getGeminiRecommendation = async (userQuery: string) => {
       }
     });
 
-    // Fix: Accessing .text as a property as specified in the guidelines.
     return response.text;
   } catch (error) {
     console.error("Gemini AI Error:", error);

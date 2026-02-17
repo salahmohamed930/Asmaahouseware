@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Star, ShoppingCart, Info, Heart, Eye } from 'lucide-react';
+import { Star, ShoppingCart, Eye, Heart } from 'lucide-react';
 import { Product } from '../types';
 
 interface ProductCardProps {
