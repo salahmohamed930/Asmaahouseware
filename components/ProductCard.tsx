@@ -36,6 +36,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
         {/* Quick View Button Overlay */}
         <div className="absolute inset-0 bg-blue-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-center justify-center backdrop-blur-[2px]">
            <button 
+             type="button"
              onClick={(e) => {
                e.stopPropagation();
                onViewDetails(product);
@@ -76,7 +77,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onViewD
           
           <div className="flex gap-2">
             <button 
-              onClick={() => onAddToCart(product)}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddToCart(product);
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl transition-all duration-300 shadow-xl shadow-blue-100 hover:shadow-blue-200 active:scale-95"
               title="أضيفي للسلة"
             >

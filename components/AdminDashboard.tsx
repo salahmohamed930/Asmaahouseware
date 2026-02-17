@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, Package, ShoppingBag, Plus, Trash2, 
-  LogOut, Loader2, Palette, Lock, X, ClipboardList, CheckCircle, Truck, Clock, AlertCircle
+  LogOut, Loader2, Palette, Lock, X, ClipboardList, CheckCircle, Truck, Clock, AlertCircle, Upload, Image as ImageIcon
 } from 'lucide-react';
 import { Product, Order } from '../types';
 import { supabase } from '../lib/supabase';
@@ -20,10 +20,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
-    name: '', category: 'أدوات المطبخ', price: 0, description: '', image: '', colors: [], rating: 5, reviews: 0
+    name: '', 
+    category: 'أدوات المطبخ', 
+    price: 0, 
+    description: '', 
+    image: '', 
+    images: [], 
+    colors: [], 
+    rating: 5, 
+    reviews: 0
   });
-  const [colorInput, setColorInput] = useState('');
+
+  const [colorInput, setColorInput] = useState('#2563eb');
 
   useEffect(() => {
     checkUser();
@@ -71,17 +82,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   };
 
   const handleAddProduct = async () => {
+    if (!newProduct.image && (!newProduct.images || newProduct.images.length === 0)) {
+      alert('يرجى إضافة صورة واحدة على الأقل للمنتج');
+      return;
+    }
+
+    setIsLoading(true);
     const { error } = await supabase.from('products').insert([newProduct]);
+    setIsLoading(false);
+    
     if (!error) {
       setIsAddModalOpen(false);
+      setNewProduct({
+        name: '', category: 'أدوات المطبخ', price: 0, description: '', image: '', images: [], colors: [], rating: 5, reviews: 0
+      });
       fetchProducts();
     } else alert(error.message);
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newImages: string[] = [...(newProduct.images || [])];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const reader = new FileReader();
+      
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onload = (e) => resolve(e.target?.result as string);
+      });
+      
+      reader.readAsDataURL(file);
+      const base64 = await base64Promise;
+      newImages.push(base64);
+    }
+
+    setNewProduct({
+      ...newProduct,
+      images: newImages,
+      image: newImages[0] // تعيين الصورة الأولى كصورة أساسية تلقائياً
+    });
+  };
+
+  const removeImage = (index: number) => {
+    const updatedImages = [...(newProduct.images || [])];
+    updatedImages.splice(index, 1);
+    setNewProduct({
+      ...newProduct,
+      images: updatedImages,
+      image: updatedImages.length > 0 ? updatedImages[0] : ''
+    });
+  };
+
   const addColor = () => {
-    if (colorInput.trim() && !newProduct.colors?.includes(colorInput.trim())) {
-      setNewProduct({...newProduct, colors: [...(newProduct.colors || []), colorInput.trim()]});
-      setColorInput('');
+    if (!newProduct.colors?.includes(colorInput)) {
+      setNewProduct({...newProduct, colors: [...(newProduct.colors || []), colorInput]});
     }
   };
 
@@ -268,35 +325,95 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-2xl rounded-[2.5rem] p-10 max-h-[90vh] overflow-y-auto">
+          <div className="relative bg-white w-full max-w-2xl rounded-[2.5rem] p-10 max-h-[90vh] overflow-y-auto no-scrollbar">
             <h3 className="text-2xl font-black mb-8">إضافة منتج جديد للمتجر</h3>
-            <div className="space-y-4">
-              <input type="text" placeholder="اسم المنتج" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" onChange={e => setNewProduct({...newProduct, name: e.target.value})} />
-              <div className="grid grid-cols-2 gap-4">
-                <input type="number" placeholder="السعر" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} />
-                <select className="w-full p-4 border rounded-2xl font-bold bg-gray-50" onChange={e => setNewProduct({...newProduct, category: e.target.value as any})}>
-                  <option>أدوات المطبخ</option><option>الأجهزة الكهربائية</option><option>الديكور</option><option>أواني التقديم</option>
-                </select>
-              </div>
-              <input type="text" placeholder="رابط صورة المنتج (URL)" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" onChange={e => setNewProduct({...newProduct, image: e.target.value})} />
-              
+            <div className="space-y-6">
               <div className="space-y-2">
-                <label className="text-sm font-bold flex items-center gap-2"><Palette className="w-4 h-4" /> الألوان المتوفرة</label>
-                <div className="flex gap-2">
-                  <input type="text" placeholder="اسم اللون أو كود" className="flex-1 p-4 border rounded-2xl font-bold bg-gray-50" value={colorInput} onChange={e => setColorInput(e.target.value)} />
-                  <button onClick={addColor} className="bg-blue-600 text-white px-6 rounded-2xl font-bold hover:bg-blue-700">أضف</button>
+                <label className="text-sm font-black text-gray-500">معلومات المنتج</label>
+                <input type="text" placeholder="اسم المنتج" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" onChange={e => setNewProduct({...newProduct, name: e.target.value})} />
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="number" placeholder="السعر" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} />
+                  <select className="w-full p-4 border rounded-2xl font-bold bg-gray-50" onChange={e => setNewProduct({...newProduct, category: e.target.value as any})}>
+                    <option>أدوات المطبخ</option><option>الأجهزة الكهربائية</option><option>الديكور</option><option>أواني التقديم</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Multiple Images Upload */}
+              <div className="space-y-2">
+                <label className="text-sm font-black text-gray-500">صور المنتج (يمكنك رفع أكثر من صورة)</label>
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full h-40 border-2 border-dashed border-gray-200 rounded-[2rem] flex flex-col items-center justify-center gap-2 hover:bg-blue-50/50 hover:border-blue-200 cursor-pointer transition-all bg-gray-50/50"
+                >
+                  <div className="p-3 bg-white rounded-2xl shadow-sm text-blue-600"><Upload className="w-6 h-6" /></div>
+                  <p className="text-xs font-black text-gray-400">اسحبي الصور هنا أو اضغطي للرفع</p>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    multiple 
+                    accept="image/*"
+                    onChange={handleFileChange}
+                  />
+                </div>
+
+                {newProduct.images && newProduct.images.length > 0 && (
+                  <div className="grid grid-cols-4 gap-3 mt-4">
+                    {newProduct.images.map((img, idx) => (
+                      <div key={idx} className="relative group aspect-square">
+                        <img src={img} className="w-full h-full object-cover rounded-2xl border" alt="" />
+                        <button 
+                          onClick={() => removeImage(idx)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                        {idx === 0 && (
+                          <div className="absolute bottom-1 right-1 bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded-md font-bold">الأساسية</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {/* Color Picker Section */}
+              <div className="space-y-2">
+                <label className="text-sm font-bold flex items-center gap-2 text-gray-500"><Palette className="w-4 h-4" /> الألوان المتوفرة</label>
+                <div className="flex gap-4 items-center bg-gray-50 p-4 rounded-2xl border">
+                  <input 
+                    type="color" 
+                    className="w-12 h-12 rounded-xl cursor-pointer border-none bg-transparent" 
+                    value={colorInput} 
+                    onChange={e => setColorInput(e.target.value)} 
+                  />
+                  <div className="flex-1 flex items-center gap-3">
+                    <span className="text-xs font-black text-gray-400 dir-ltr">{colorInput.toUpperCase()}</span>
+                    <button onClick={addColor} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100">إضافة اللون</button>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {newProduct.colors?.map(c => (
-                    <span key={c} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2">
-                      {c} <X className="w-3 h-3 cursor-pointer" onClick={() => setNewProduct({...newProduct, colors: newProduct.colors?.filter(x => x !== c)})} />
+                    <span key={c} className="bg-white border border-gray-100 shadow-sm px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full border border-gray-200" style={{backgroundColor: c}}></div>
+                      <span className="dir-ltr">{c.toUpperCase()}</span>
+                      <X className="w-3 h-3 cursor-pointer text-gray-300 hover:text-red-500" onClick={() => setNewProduct({...newProduct, colors: newProduct.colors?.filter(x => x !== c)})} />
                     </span>
                   ))}
                 </div>
               </div>
 
               <textarea placeholder="وصف تفصيلي للمنتج..." className="w-full p-4 border rounded-2xl font-bold h-32 bg-gray-50" onChange={e => setNewProduct({...newProduct, description: e.target.value})} />
-              <button onClick={handleAddProduct} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-lg mt-4 shadow-xl shadow-blue-100">نشر المنتج في المتجر</button>
+              
+              <button 
+                onClick={handleAddProduct} 
+                disabled={isLoading}
+                className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black text-lg mt-4 shadow-xl shadow-blue-100 flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : <Package className="w-6 h-6" />}
+                نشر المنتج في المتجر
+              </button>
             </div>
           </div>
         </div>
