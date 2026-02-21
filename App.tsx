@@ -13,6 +13,24 @@ import {
   X, ShoppingCart, Loader2, Settings, Package, Clock, CheckCircle, Truck, AlertCircle, Inbox
 } from 'lucide-react';
 
+const STORE_HIGHLIGHTS = [
+  {
+    icon: Truck,
+    title: 'شحن سريع',
+    description: 'توصيل آمن لجميع مناطق المملكة خلال وقت قياسي.'
+  },
+  {
+    icon: CheckCircle,
+    title: 'جودة مضمونة',
+    description: 'منتجات مختارة بعناية مع ضمان ضد عيوب التصنيع.'
+  },
+  {
+    icon: Package,
+    title: 'تنوع المنتجات',
+    description: 'تشكيلة واسعة من الأدوات المنزلية وأجهزة المطبخ الحديثة.'
+  }
+];
+
 const App: React.FC = () => {
   const [view, setView] = useState<'store' | 'admin' | 'my-orders'>('store');
   const [user, setUser] = useState<any>(null);
@@ -133,11 +151,30 @@ const App: React.FC = () => {
             <section className="bg-blue-900 text-white py-20 relative overflow-hidden">
               <div className="container mx-auto px-4 flex flex-col md:flex-row items-center gap-12 relative z-10">
                 <div className="md:w-1/2 text-right">
+                  <span className="inline-flex items-center gap-2 text-xs md:text-sm font-bold bg-white/15 border border-white/30 rounded-full px-4 py-2 mb-5">
+                    <ShoppingCart className="w-4 h-4" />
+                    متجر إلكتروني متكامل
+                  </span>
                   <h2 className="text-4xl md:text-6xl font-black mb-6 leading-tight" dangerouslySetInnerHTML={{ __html: heroContent.hero_title.replace(/\n/g, '<br/>') }}></h2>
                   <p className="text-lg md:text-xl text-blue-100/80 mb-8 max-w-xl">{heroContent.hero_subtitle}</p>
                 </div>
                 <div className="md:w-1/2">
                   <img src={heroContent.hero_image} className="rounded-[3rem] shadow-2xl aspect-video object-cover" />
+                </div>
+              </div>
+
+              <div className="container mx-auto px-4 relative z-10 mt-10">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {STORE_HIGHLIGHTS.map(highlight => {
+                    const Icon = highlight.icon;
+                    return (
+                      <div key={highlight.title} className="bg-white/10 border border-white/20 rounded-2xl p-5 backdrop-blur-sm">
+                        <Icon className="w-6 h-6 mb-3 text-blue-200" />
+                        <h4 className="font-black text-lg mb-1">{highlight.title}</h4>
+                        <p className="text-blue-100/80 text-sm">{highlight.description}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </section>
