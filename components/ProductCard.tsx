@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { Star, ShoppingCart, Eye, Heart } from 'lucide-react';
+import React, { useState } from 'react';
+import { Star, ShoppingCart, Eye, Heart, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Product } from '../types';
 
 interface ProductCardProps {
@@ -11,9 +11,22 @@ interface ProductCardProps {
 }
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, userType = 'retail', onAddToCart, onViewDetails }) => {
+  const [currentImageIndex, setCurrentImageIndex] = useState(-1); // -1 means main image
+  const allImages = [product.image, ...(product.images || [])];
+  
   const displayPrice = userType === 'wholesale' && product.wholesale_price 
     ? product.wholesale_price 
     : product.price;
+
+  const nextImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentImageIndex((prev) => (prev + 1 >= allImages.length - 1 ? -1 : prev + 1));
+  };
+
+  const prevImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentImageIndex((prev) => (prev === -1 ? allImages.length - 2 : prev - 1));
+  };
 
   return (
     <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100/50 overflow-hidden hover:shadow-[0_20px_50px_rgba(37,99,235,0.1)] hover:-translate-y-2 transition-all duration-500 group relative">
@@ -28,10 +41,34 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, userType = 'retail',
         onClick={() => onViewDetails(product)}
       >
         <img 
-          src={product.image} 
+          src={currentImageIndex === -1 ? product.image : allImages[currentImageIndex + 1]} 
           alt={product.name} 
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out"
         />
+        
+        {/* Image Navigation Arrows */}
+        {allImages.length > 1 && (
+          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+            <button onClick={prevImage} className="p-2 bg-white/80 backdrop-blur-md rounded-full text-gray-700 hover:bg-white shadow-lg transition">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <button onClick={nextImage} className="p-2 bg-white/80 backdrop-blur-md rounded-full text-gray-700 hover:bg-white shadow-lg transition">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Image Dots */}
+        {allImages.length > 1 && (
+          <div className="absolute bottom-4 inset-x-0 flex justify-center gap-1.5 z-20">
+            {allImages.map((_, idx) => (
+              <div 
+                key={idx} 
+                className={`h-1.5 rounded-full transition-all duration-300 ${currentImageIndex + 1 === idx ? 'w-6 bg-blue-600' : 'w-1.5 bg-white/60'}`} 
+              />
+            ))}
+          </div>
+        )}
         
         {/* Category Badge */}
         <div className="absolute top-5 right-5 bg-white/60 backdrop-blur-xl border border-white/40 px-4 py-1.5 rounded-2xl text-[11px] font-black text-blue-700 shadow-sm z-10">

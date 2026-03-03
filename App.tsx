@@ -158,7 +158,7 @@ const App: React.FC = () => {
         user={user}
         isAdmin={isAdmin}
         onMyOrders={() => setView('my-orders')}
-        onHome={() => { setView('store'); fetchProducts(); }}
+        onHome={() => { setView('store'); setSearchQuery(''); fetchProducts(); }}
         onLoginClick={() => setIsAuthModalOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -208,15 +208,31 @@ const App: React.FC = () => {
                         product={p} 
                         userType={user?.user_type}
                         onAddToCart={(prod) => {
-                          if (prod.colors && prod.colors.length > 0) { setSelectedProduct(prod); setSelectedColor(null); }
+                          if (prod.colors && prod.colors.length > 0) { 
+                            setSelectedProduct(prod); 
+                            setSelectedColor(null); 
+                            setActiveImageIndex(-1); 
+                          }
                           else { handleAddToCart(prod); setIsCartOpen(true); }
-                        }} onViewDetails={(prod) => { setSelectedProduct(prod); setSelectedColor(null); }} 
+                        }} onViewDetails={(prod) => { 
+                          setSelectedProduct(prod); 
+                          setSelectedColor(null); 
+                          setActiveImageIndex(-1); 
+                        }} 
                       />
                     ))}
                     {filteredProducts.length === 0 && (
                       <div className="col-span-full py-20 text-center">
                         <Inbox className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                        <p className="text-gray-400 font-bold">لا توجد منتجات تطابق بحثكِ حالياً</p>
+                        <p className="text-gray-400 font-bold mb-4">لا توجد منتجات تطابق بحثكِ حالياً</p>
+                        {searchQuery && (
+                          <button 
+                            onClick={() => setSearchQuery('')}
+                            className="text-blue-600 font-black text-sm hover:underline"
+                          >
+                            إلغاء البحث وعرض الكل
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -287,8 +303,33 @@ const App: React.FC = () => {
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setSelectedProduct(null)} />
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="relative bg-white w-full max-w-4xl rounded-[2.5rem] overflow-hidden flex flex-col md:flex-row max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl">
-              <div className="md:w-1/2 bg-gray-50 p-8 flex flex-col justify-center">
-                <img src={selectedProduct.images?.[activeImageIndex] || selectedProduct.image} className="w-full h-auto object-contain max-h-[400px]" alt="" />
+              <div className="md:w-1/2 bg-gray-50 p-8 flex flex-col gap-6">
+                <div className="flex-1 flex items-center justify-center">
+                  <img 
+                    src={activeImageIndex === -1 ? selectedProduct.image : (selectedProduct.images?.[activeImageIndex] || selectedProduct.image)} 
+                    className="w-full h-auto object-contain max-h-[400px] rounded-2xl shadow-sm" 
+                    alt="" 
+                  />
+                </div>
+                {selectedProduct.images && selectedProduct.images.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                    <button 
+                      onClick={() => setActiveImageIndex(-1)}
+                      className={`w-16 h-16 rounded-xl border-2 flex-shrink-0 overflow-hidden transition ${activeImageIndex === -1 ? 'border-blue-600 shadow-md' : 'border-white'}`}
+                    >
+                      <img src={selectedProduct.image} className="w-full h-full object-cover" alt="" />
+                    </button>
+                    {selectedProduct.images.map((img, idx) => (
+                      <button 
+                        key={idx}
+                        onClick={() => setActiveImageIndex(idx)}
+                        className={`w-16 h-16 rounded-xl border-2 flex-shrink-0 overflow-hidden transition ${activeImageIndex === idx ? 'border-blue-600 shadow-md' : 'border-white'}`}
+                      >
+                        <img src={img} className="w-full h-full object-cover" alt="" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="md:w-1/2 p-10 flex flex-col">
                 <div className="flex justify-between items-start mb-4">

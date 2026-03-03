@@ -48,6 +48,20 @@ const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
+        {/* Mobile Search Toggle/Bar (Visible only on mobile) */}
+        <div className="md:hidden flex-1 max-w-[150px] sm:max-w-xs">
+          <div className="relative w-full">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="بحث..."
+              className="w-full pl-3 pr-9 py-2 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600/10 font-bold transition-all text-xs"
+            />
+            <Search className="absolute right-3 top-2.5 text-gray-400 w-4 h-4" />
+          </div>
+        </div>
+
         {/* Actions */}
         <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
           <button onClick={onHome} className="md:hidden p-2 text-gray-500 hover:text-blue-600"><Home className="w-6 h-6" /></button>

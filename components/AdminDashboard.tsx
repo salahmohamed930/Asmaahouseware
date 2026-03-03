@@ -735,7 +735,45 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                   <option>أدوات المطبخ</option><option>الأجهزة الكهربائية</option><option>الديكور</option><option>أواني التقديم</option>
                 </select>
               </div>
-              <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">رابط الصورة (URL)</label><input type="text" placeholder="https://..." className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.image} onChange={e => setProductForm({...productForm, image: e.target.value})} /></div>
+              <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">رابط الصورة الأساسية (URL)</label><input type="text" placeholder="https://..." className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.image} onChange={e => setProductForm({...productForm, image: e.target.value})} /></div>
+              
+              <div className="space-y-3">
+                <label className="text-xs font-black text-gray-400 mr-2">صور إضافية للمنتج</label>
+                <div className="space-y-2">
+                  {(productForm.images || []).map((img, idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="رابط صورة إضافية..." 
+                        className="flex-1 p-3 border rounded-xl font-bold bg-gray-50 text-sm" 
+                        value={img} 
+                        onChange={e => {
+                          const newImages = [...(productForm.images || [])];
+                          newImages[idx] = e.target.value;
+                          setProductForm({...productForm, images: newImages});
+                        }} 
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const newImages = (productForm.images || []).filter((_, i) => i !== idx);
+                          setProductForm({...productForm, images: newImages});
+                        }}
+                        className="p-3 text-red-500 bg-red-50 rounded-xl hover:bg-red-100 transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <button 
+                    type="button"
+                    onClick={() => setProductForm({...productForm, images: [...(productForm.images || []), '']})}
+                    className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 font-bold text-xs hover:bg-gray-50 transition flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" /> إضافة صورة أخرى
+                  </button>
+                </div>
+              </div>
               <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">وصف المنتج</label><textarea placeholder="اكتبي تفاصيل المنتج..." className="w-full p-4 border rounded-2xl font-bold h-28 bg-gray-50" value={productForm.description} onChange={e => setProductForm({...productForm, description: e.target.value})} /></div>
               <button onClick={handleSaveProduct} disabled={isLoading} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black text-lg shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
                 {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : <Package className="w-6 h-6" />} {editingProduct ? 'حفظ التغييرات' : 'نشر المنتج'}
