@@ -48,34 +48,47 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
     try {
       if (isLogin) {
-        const { error: authError } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password,
-        });
-        if (authError) throw authError;
+        // تسجيل دخول يدوي عبر البحث في جدول users
+        const { data: user, error: authError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', formData.email)
+          .eq('password', formData.password)
+          .single();
+
+        if (authError || !user) {
+          throw new Error('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+        }
+
+        // حفظ بيانات المستخدم في LocalStorage لمحاكاة الجلسة
+        localStorage.setItem('asmaa_user', JSON.stringify(user));
         onClose();
         window.location.reload();
       } else {
-        const { error: authError } = await supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
-          options: {
-            data: {
-              full_name: formData.fullName,
-              phone: formData.phone,
-              address: formData.address,
-            }
-          }
-        });
+        // تسجيل حساب جديد يدوياً في جدول users
+        const { data: newUser, error: authError } = await supabase
+          .from('users')
+          .insert([{
+            full_name: formData.fullName,
+            email: formData.email,
+            password: formData.password,
+            phone: formData.phone,
+            address: formData.address,
+            role: 'user'
+          }])
+          .select()
+          .single();
 
-        if (authError) throw authError;
+        if (authError) {
+          if (authError.code === '23505') throw new Error('البريد الإلكتروني مسجل مسبقاً');
+          throw authError;
+        }
         
-        // عند نجاح التسجيل، نقوم بإغلاق النافذة (عادة ما يرسل Supabase بريد تأكيد تلقائياً إذا كان مفعلاً)
         alert('تم إنشاء الحساب بنجاح! يمكنكِ الآن تسجيل الدخول.');
         setIsLogin(true);
       }
     } catch (err: any) {
-      setError(err.message === 'Invalid login credentials' ? 'بيانات الدخول غير صحيحة' : err.message);
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }

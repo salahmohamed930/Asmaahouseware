@@ -1,10 +1,23 @@
 
+export interface UserAccount {
+  id: string;
+  full_name: string;
+  email: string;
+  password?: string;
+  phone?: string;
+  address?: string;
+  avatar_url?: string;
+  role: 'user' | 'admin';
+  user_type?: 'retail' | 'wholesale';
+  updated_at?: string;
+}
+
 export interface Product {
   id: number;
   name: string;
   category: string;
   price: number;
-  wholesale_price?: number; // سعر الجملة الجديد
+  wholesale_price?: number;
   description: string;
   image: string;
   images?: string[];
@@ -13,24 +26,6 @@ export interface Product {
   reviews: number;
   is_visible?: boolean;
   created_at?: string;
-}
-
-export interface UserProfile {
-  id: string;
-  full_name: string;
-  email: string;
-  phone: string;
-  address: string;
-  is_wholesale: boolean;
-  next_order_discount_value: number;
-  next_order_discount_type: 'fixed' | 'percent';
-  created_at: string;
-}
-
-export interface CategoryData {
-  id: number;
-  name: string;
-  discount_percent: number;
 }
 
 export interface CartItem extends Product {
@@ -46,10 +41,10 @@ export interface Order {
   customer_phone_2?: string;
   customer_address: string;
   total_price: number;
-  discount_applied?: number;
   status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   created_at: string;
   items?: OrderItem[];
+  // order_items is added to match the Supabase response when joining with the order_items table
   order_items?: OrderItem[];
 }
 
@@ -69,4 +64,4 @@ export interface SiteSettings {
   hero_image: string;
 }
 
-export type Category = string; // تم تحويلها لديناميكية
+export type Category = 'الكل' | 'أدوات المطبخ' | 'الأجهزة الكهربائية' | 'الديكور' | 'أواني التقديم';

@@ -21,8 +21,8 @@ const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    localStorage.removeItem('asmaa_user');
     window.location.reload();
   };
 
@@ -59,7 +59,7 @@ const Navbar: React.FC<NavbarProps> = ({
                 className="flex items-center gap-2 bg-blue-50/50 hover:bg-blue-50 px-3 py-2 rounded-xl transition border border-blue-100/30"
               >
                 <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-xs shadow-md">
-                  {user.email?.[0].toUpperCase()}
+                  {user.full_name?.[0].toUpperCase() || user.email?.[0].toUpperCase()}
                 </div>
                 <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -68,7 +68,7 @@ const Navbar: React.FC<NavbarProps> = ({
                 <div className="absolute left-0 mt-3 w-56 bg-white rounded-2xl shadow-2xl border border-gray-50 py-2 z-[110] animate-in fade-in slide-in-from-top-2">
                   <div className="px-4 py-2 border-b border-gray-50 mb-1">
                     <p className="text-[10px] text-gray-400 font-black mb-1">مسجل كـ</p>
-                    <p className="text-xs font-black text-blue-600 truncate">{user.email}</p>
+                    <p className="text-xs font-black text-blue-600 truncate">{user.full_name || user.email}</p>
                   </div>
                   <button 
                     onClick={() => { onMyOrders(); setIsUserMenuOpen(false); }}
