@@ -68,23 +68,14 @@ const App: React.FC = () => {
       
       if (error) {
         console.error('Error fetching products from DB:', error);
-        setProducts(LOCAL_PRODUCTS);
+        setProducts([]);
         return;
       }
 
-      const dbItems = dbProducts || [];
-      const merged = [...dbItems];
-      
-      LOCAL_PRODUCTS.forEach(lp => {
-        if (!merged.find(p => p.name === lp.name)) {
-          merged.push(lp);
-        }
-      });
-
-      setProducts(merged.length > 0 ? merged : LOCAL_PRODUCTS);
+      setProducts(dbProducts || []);
     } catch (err) {
       console.error('Unexpected error in fetchProducts:', err);
-      setProducts(LOCAL_PRODUCTS);
+      setProducts([]);
     } finally {
       setIsLoading(false);
     }

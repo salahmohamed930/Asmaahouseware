@@ -309,15 +309,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
   };
 
   const toggleUserRole = async (user: UserAccount) => {
+    if (!user.id) return;
     const newRole = user.role === 'admin' ? 'user' : 'admin';
-    const { error } = await supabase.from('users').update({ role: newRole }).eq('id', user.id);
-    if (!error) fetchUsers();
+    
+    try {
+      const { error } = await supabase.from('users').update({ role: newRole }).eq('id', user.id);
+      if (error) throw error;
+      await fetchUsers();
+    } catch (error: any) {
+      console.error('Error toggling user role:', error);
+      alert('فشل تغيير صلاحية المستخدم: ' + (error.message || 'خطأ غير معروف'));
+    }
   };
 
   const toggleUserType = async (user: UserAccount) => {
-    const newType = user.user_type === 'wholesale' ? 'retail' : 'wholesale';
-    const { error } = await supabase.from('users').update({ user_type: newType }).eq('id', user.id);
-    if (!error) fetchUsers();
+    if (!user.id) return;
+    // Handle case where user_type might be null/undefined
+    const currentType = user.user_type || 'retail';
+    const newType = currentType === 'wholesale' ? 'retail' : 'wholesale';
+    
+    try {
+      const { error } = await supabase.from('users').update({ user_type: newType }).eq('id', user.id);
+      if (error) throw error;
+      await fetchUsers();
+    } catch (error: any) {
+      console.error('Error toggling user type:', error);
+      alert('فشل تغيير نوع العميل: ' + (error.message || 'خطأ غير معروف'));
+    }
   };
 
   const statusMap = {
