@@ -22,6 +22,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -35,7 +36,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
   const heroFileInputRef = useRef<HTMLInputElement>(null);
 
   const [productForm, setProductForm] = useState<Partial<Product>>({
-    name: '', category: 'أدوات المطبخ', price: 0, description: '', image: '', images: [], colors: [], is_visible: true
+    name: '', code: '', category: 'أدوات المطبخ', price: 0, wholesale_price: 0, description: '', image: '', images: [], colors: [], is_visible: true
   });
 
   useEffect(() => {
@@ -164,11 +165,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
   };
 
   const updateOrderStatus = async (orderId: string, status: string) => {
-    const { error } = await supabase.from('orders').update({ status }).eq('id', orderId);
-    if (!error) {
+    try {
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: status as any } : o));
+      const { error } = await supabase.from('orders').update({ status }).eq('id', orderId);
+      if (error) throw error;
       fetchOrders();
-    } else {
-      alert('فشل تحديث حالة الطلب');
+    } catch (err: any) {
+      console.error("Error updating order status:", err);
+      alert('فشل تحديث حالة الطلب: ' + (err.message || ''));
+      fetchOrders();
     }
   };
 
@@ -262,23 +267,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
   };
 
   const handleSaveProduct = async () => {
-    if (!productForm.name || !productForm.price) return alert("يرجى ملء الاسم والسعر");
+    if (!productForm.name || productForm.price === undefined || productForm.price === null) {
+      return alert("يرجى ملء الاسم والسعر");
+    }
     
     setIsLoading(true);
     let error;
-    if (editingProduct) {
-      const { error: err } = await supabase.from('products').update(productForm).eq('id', editingProduct.id);
-      error = err;
-    } else {
-      const { error: err } = await supabase.from('products').insert([productForm]);
-      error = err;
-    }
-    setIsLoading(false);
-    if (!error) { 
-      setIsModalOpen(false); 
-      fetchProducts(); 
-    } else {
-      alert("خطأ أثناء الحفظ: " + error.message);
+
+    // Prepare data for saving - remove metadata fields that shouldn't be updated
+    const { id, created_at, ...dataToSave } = productForm as any;
+    
+    // Ensure numeric fields are valid numbers and not NaN
+    const price = Number(dataToSave.price);
+    const wholesalePrice = dataToSave.wholesale_price !== undefined && dataToSave.wholesale_price !== null && dataToSave.wholesale_price !== '' 
+      ? Number(dataToSave.wholesale_price) 
+      : null;
+
+    dataToSave.price = isNaN(price) ? 0 : price;
+    dataToSave.wholesale_price = (wholesalePrice === null || isNaN(wholesalePrice)) ? null : wholesalePrice;
+
+    try {
+      if (editingProduct) {
+        const { error: err } = await supabase.from('products').update(dataToSave).eq('id', editingProduct.id);
+        error = err;
+      } else {
+        const { error: err } = await supabase.from('products').insert([dataToSave]);
+        error = err;
+      }
+      
+      if (!error) { 
+        setIsModalOpen(false); 
+        fetchProducts(); 
+        setEditingProduct(null);
+        setProductForm({
+          name: '', code: '', category: 'أدوات المطبخ', price: 0, wholesale_price: 0, description: '', image: '', images: [], colors: [], is_visible: true
+        });
+      } else {
+        alert("خطأ أثناء الحفظ: " + error.message);
+      }
+    } catch (err: any) {
+      alert("حدث خطأ غير متوقع: " + err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -397,6 +427,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
     cancelled: { label: 'ملغي', color: 'bg-red-100 text-red-600', icon: AlertCircle },
   };
 
+  const pendingOrdersCount = orders.filter(o => o.status === 'pending' || o.status === 'processing').length;
+
   if (!session) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
       <div className="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl border">
@@ -433,8 +465,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
           <button onClick={() => setActiveTab('products')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition ${activeTab === 'products' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-50'}`}>
             <Package className="w-5 h-5" /> <span className="font-bold">المخزون</span>
           </button>
-          <button onClick={() => setActiveTab('orders')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition ${activeTab === 'orders' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-50'}`}>
-            <ShoppingBag className="w-5 h-5" /> <span className="font-bold">الطلبات</span>
+          <button onClick={() => setActiveTab('orders')} className={`w-full flex items-center justify-between px-4 py-4 rounded-2xl transition ${activeTab === 'orders' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-50'}`}>
+            <div className="flex items-center gap-3">
+              <ShoppingBag className="w-5 h-5" /> <span className="font-bold">الطلبات</span>
+            </div>
+            {pendingOrdersCount > 0 && (
+              <span className={`px-2 py-0.5 text-xs font-black rounded-full ${activeTab === 'orders' ? 'bg-white text-blue-600' : 'bg-red-500 text-white'}`}>
+                {pendingOrdersCount}
+              </span>
+            )}
           </button>
           <button onClick={() => setActiveTab('users')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition ${activeTab === 'users' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-50'}`}>
             <Users className="w-5 h-5" /> <span className="font-bold">المستخدمين</span>
@@ -452,6 +491,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
 
       {/* Main Content */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto h-screen no-scrollbar pb-24 md:pb-8 relative">
+        {pendingOrdersCount > 0 && activeTab !== 'orders' && (
+          <div className="mb-6 bg-orange-50 border border-orange-200 text-orange-800 px-6 py-4 rounded-2xl flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-orange-100 p-2 rounded-xl">
+                <AlertCircle className="w-5 h-5 text-orange-600" />
+              </div>
+              <div>
+                <h4 className="font-black text-sm">تنبيه: طلبات جديدة!</h4>
+                <p className="text-xs font-bold text-orange-600/80 mt-0.5">يوجد {pendingOrdersCount} طلب قيد الانتظار أو التجهيز بحاجة لمراجعتك.</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setActiveTab('orders')}
+              className="px-4 py-2 bg-orange-600 text-white text-xs font-black rounded-xl hover:bg-orange-700 transition shadow-sm"
+            >
+              عرض الطلبات
+            </button>
+          </div>
+        )}
+
         {isLoading && (
           <div className="absolute inset-0 bg-white/50 backdrop-blur-[2px] z-[100] flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
@@ -465,7 +524,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
              {activeTab === 'overview' ? 'إحصائيات المتجر' : activeTab === 'products' ? 'إدارة الأصناف' : activeTab === 'orders' ? 'الطلبات الواردة' : activeTab === 'users' ? 'إدارة المستخدمين' : 'محتوى الواجهة'}
            </h2>
            {activeTab === 'products' && (
-             <button onClick={() => { setEditingProduct(null); setProductForm({name: '', category: 'أدوات المطبخ', price: 0, description: '', images: [], is_visible: true}); setIsModalOpen(true); }} className="bg-blue-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-2xl font-black flex items-center gap-2 shadow-lg hover:bg-blue-700 transition text-sm md:text-base w-full sm:w-auto justify-center">
+             <button onClick={() => { setEditingProduct(null); setProductForm({name: '', code: '', category: 'أدوات المطبخ', price: 0, wholesale_price: 0, description: '', image: '', images: [], colors: [], is_visible: true}); setIsModalOpen(true); }} className="bg-blue-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-2xl font-black flex items-center gap-2 shadow-lg hover:bg-blue-700 transition text-sm md:text-base w-full sm:w-auto justify-center">
                <Plus className="w-5 h-5" /> صنف جديد
              </button>
            )}
@@ -508,6 +567,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                  <thead className="bg-gray-50 border-b">
                    <tr>
                      <th className="px-8 py-5 text-sm font-black text-gray-400">المنتج</th>
+                     <th className="px-8 py-5 text-sm font-black text-gray-400">الكود</th>
                      <th className="px-8 py-5 text-sm font-black text-gray-400">الفئة</th>
                      <th className="px-8 py-5 text-sm font-black text-gray-400">سعر القطاعي</th>
                      <th className="px-8 py-5 text-sm font-black text-gray-400">سعر الجملة</th>
@@ -518,6 +578,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                  <tbody className="divide-y">
                    {(products || []).filter(p => 
                      (p.name || '').toLowerCase().includes(productSearchQuery.toLowerCase()) || 
+                     (p.code || '').toLowerCase().includes(productSearchQuery.toLowerCase()) || 
                      (p.description || '').toLowerCase().includes(productSearchQuery.toLowerCase())
                    ).map(p => (
                      <tr key={p.id} className={`hover:bg-gray-50 transition ${p.is_visible === false ? 'bg-gray-50/50' : ''}`}>
@@ -525,6 +586,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                        <img src={p.image || 'https://via.placeholder.com/150'} className="w-14 h-14 rounded-2xl object-cover shadow-sm" alt="" />
                        <span>{p.name}</span>
                      </td>
+                     <td className="px-8 py-5 text-sm font-bold text-blue-600">{p.code || '---'}</td>
                      <td className="px-8 py-5 text-sm font-bold text-gray-400">{p.category}</td>
                      <td className="px-8 py-5 text-sm font-black text-blue-600">{p.price.toLocaleString()} ج.م</td>
                      <td className="px-8 py-5 text-sm font-black text-orange-600">{p.wholesale_price?.toLocaleString() || '---'} ج.م</td>
@@ -552,44 +614,74 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
 
         {activeTab === 'orders' && (
           <div className="space-y-6">
+            <div className="bg-white p-4 rounded-2xl border shadow-sm flex items-center gap-4">
+              <div className="relative flex-1">
+                <input 
+                  type="text" 
+                  placeholder="ابحثي عن طلب بالاسم، الهاتف، أو رقم الطلب..." 
+                  className="w-full pl-4 pr-11 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600/10 font-bold transition-all text-sm"
+                  value={orderSearchQuery}
+                  onChange={(e) => setOrderSearchQuery(e.target.value)}
+                />
+                <Search className="absolute right-4 top-3 text-gray-400 w-5 h-5" />
+              </div>
+            </div>
+
             {orders.length === 0 ? (
               <div className="bg-white p-20 rounded-[3rem] border text-center flex flex-col items-center gap-4">
                 <Package className="w-12 h-12 text-gray-200" />
                 <p className="text-gray-400 font-bold">لا توجد طلبات واردة حالياً</p>
               </div>
             ) : (
-              orders.map(order => (
-                <div key={order.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm animate-in fade-in slide-in-from-bottom-2">
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                    <div>
-                      <div className="flex items-center gap-3 mb-1">
-                        <h4 className="font-black text-xl text-blue-600">طلب #{order.id.slice(0,8)}</h4>
-                        <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-2 ${statusMap[order.status as keyof typeof statusMap]?.color || 'bg-gray-100'}`}>
-                          {statusMap[order.status as keyof typeof statusMap]?.label || order.status}
-                        </span>
-                      </div>
-                      <p className="text-sm font-black text-gray-900">{order.customer_name} • <span className="text-blue-600" dir="ltr">{order.customer_phone}</span></p>
-                      {order.customer_phone_2 && <p className="text-xs font-bold text-gray-500 mt-1">رقم بديل: <span dir="ltr">{order.customer_phone_2}</span></p>}
-                      <p className="text-xs text-gray-400 font-bold mt-1">{order.customer_address}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button 
-                        onClick={() => handlePrint(order)}
-                        className="bg-white border border-gray-200 p-3 rounded-xl text-gray-600 hover:bg-gray-50 transition shadow-sm flex items-center gap-2"
-                        title="طباعة الفاتورة"
-                      >
-                        <Printer className="w-5 h-5" />
-                        <span className="text-xs font-bold">طباعة</span>
-                      </button>
-                      <select 
-                        value={order.status} 
-                        onChange={e => updateOrderStatus(order.id, e.target.value)} 
-                        className="bg-gray-50 border border-gray-100 p-3 rounded-xl text-xs font-black outline-none focus:ring-2 focus:ring-blue-600/20 cursor-pointer"
-                      >
-                        {Object.keys(statusMap).map(s => <option key={s} value={s}>{statusMap[s as keyof typeof statusMap].label}</option>)}
-                      </select>
-                    </div>
+              <div className="space-y-6">
+                {orders.filter(order => 
+                  (order.customer_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase()) ||
+                  (order.customer_phone || '').includes(orderSearchQuery) ||
+                  (order.id || '').toLowerCase().includes(orderSearchQuery.toLowerCase())
+                ).length === 0 ? (
+                  <div className="bg-white p-10 rounded-[2rem] border text-center">
+                    <p className="text-gray-400 font-bold">لا توجد نتائج تطابق بحثك</p>
                   </div>
+                ) : (
+                  orders.filter(order => 
+                    (order.customer_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase()) ||
+                    (order.customer_phone || '').includes(orderSearchQuery) ||
+                    (order.id || '').toLowerCase().includes(orderSearchQuery.toLowerCase())
+                  ).map(order => (
+                    <div key={order.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm animate-in fade-in slide-in-from-bottom-2">
+                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                        <div>
+                          <div className="flex items-center gap-3 mb-1">
+                            <h4 className="font-black text-xl text-blue-600">طلب #{order.id.slice(0,8)}</h4>
+                            <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-2 ${statusMap[order.status as keyof typeof statusMap]?.color || 'bg-gray-100'}`}>
+                              {statusMap[order.status as keyof typeof statusMap]?.label || order.status}
+                            </span>
+                          </div>
+                          <p className="text-sm font-black text-gray-900">{order.customer_name} • <span className="text-blue-600" dir="ltr">{order.customer_phone}</span></p>
+                          {order.customer_phone_2 && <p className="text-xs font-bold text-gray-500 mt-1">رقم بديل: <span dir="ltr">{order.customer_phone_2}</span></p>}
+                          <p className="text-xs text-gray-400 font-bold mt-1">{order.customer_address}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button 
+                            onClick={() => handlePrint(order)}
+                            className="bg-white border border-gray-200 p-3 rounded-xl text-gray-600 hover:bg-gray-50 transition shadow-sm flex items-center gap-2"
+                            title="طباعة الفاتورة"
+                          >
+                            <Printer className="w-5 h-5" />
+                            <span className="text-xs font-bold">طباعة</span>
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-gray-400 whitespace-nowrap">تغيير الحالة:</span>
+                            <select 
+                              value={order.status} 
+                              onChange={e => updateOrderStatus(order.id, e.target.value)} 
+                              className="bg-gray-50 border border-gray-100 p-3 rounded-xl text-xs font-black outline-none focus:ring-2 focus:ring-blue-600/20 cursor-pointer min-w-[120px]"
+                            >
+                              {Object.keys(statusMap).map(s => <option key={s} value={s}>{statusMap[s as keyof typeof statusMap].label}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
                   <div className="bg-gray-50 p-6 rounded-[2rem] space-y-3">
                     {(order.order_items || order.items || []).map((item: any) => (
                       <div key={item.id} className="flex justify-between items-center text-sm font-bold">
@@ -611,6 +703,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
             )}
           </div>
         )}
+      </div>
+    )}
 
         {activeTab === 'users' && (
           <div className="space-y-6">
@@ -698,11 +792,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
               <div className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-sm font-black text-gray-500">عنوان الواجهة الرئيسي</label>
-                  <textarea className="w-full p-4 border rounded-2xl font-bold bg-gray-50 h-24 focus:ring-2 focus:ring-blue-600 outline-none transition" value={siteSettings.hero_title} onChange={e => setSiteSettings({...siteSettings, hero_title: e.target.value})} />
+                  <textarea className="w-full p-4 border rounded-2xl font-bold bg-gray-50 h-24 focus:ring-2 focus:ring-blue-600 outline-none transition" value={siteSettings.hero_title || ''} onChange={e => setSiteSettings({...siteSettings, hero_title: e.target.value})} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-black text-gray-500">وصف الواجهة الفرعي</label>
-                  <textarea className="w-full p-4 border rounded-2xl font-bold bg-gray-50 h-32 focus:ring-2 focus:ring-blue-600 outline-none transition" value={siteSettings.hero_subtitle} onChange={e => setSiteSettings({...siteSettings, hero_subtitle: e.target.value})} />
+                  <textarea className="w-full p-4 border rounded-2xl font-bold bg-gray-50 h-32 focus:ring-2 focus:ring-blue-600 outline-none transition" value={siteSettings.hero_subtitle || ''} onChange={e => setSiteSettings({...siteSettings, hero_subtitle: e.target.value})} />
                 </div>
               </div>
               <div className="space-y-4">
@@ -748,9 +842,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
         </button>
         <button 
           onClick={() => setActiveTab('orders')} 
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition ${activeTab === 'orders' ? 'text-blue-600 bg-blue-50' : 'text-gray-400'}`}
+          className={`relative flex flex-col items-center gap-1 p-2 rounded-xl transition ${activeTab === 'orders' ? 'text-blue-600 bg-blue-50' : 'text-gray-400'}`}
         >
-          <ShoppingBag className="w-5 h-5" />
+          <div className="relative">
+            <ShoppingBag className="w-5 h-5" />
+            {pendingOrdersCount > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                {pendingOrdersCount}
+              </span>
+            )}
+          </div>
           <span className="text-[10px] font-bold">الطلبات</span>
         </button>
         <button 
@@ -776,20 +877,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
           <div className="relative bg-white w-full max-w-xl rounded-[3rem] p-10 max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl animate-in zoom-in-95">
             <h3 className="text-2xl font-black mb-8 text-center">{editingProduct ? 'تعديل بيانات الصنف' : 'إضافة صنف جديد'}</h3>
             <div className="space-y-5">
-              <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">اسم المنتج</label><input type="text" placeholder="مثلاً: طقم حلل جرانيت" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.name} onChange={e => setProductForm({...productForm, name: e.target.value})} /></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">اسم المنتج</label><input type="text" placeholder="مثلاً: طقم حلل جرانيت" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.name || ''} onChange={e => setProductForm({...productForm, name: e.target.value})} /></div>
+                <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">كود المنتج</label><input type="text" placeholder="مثلاً: AS-100" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.code || ''} onChange={e => setProductForm({...productForm, code: e.target.value})} /></div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">سعر القطاعي</label><input type="number" placeholder="0.00" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.price} onChange={e => setProductForm({...productForm, price: Number(e.target.value)})} /></div>
-                <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">سعر الجملة</label><input type="number" placeholder="0.00" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.wholesale_price} onChange={e => setProductForm({...productForm, wholesale_price: Number(e.target.value)})} /></div>
+                <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">سعر القطاعي</label><input type="number" step="0.01" placeholder="0.00" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.price || 0} onChange={e => setProductForm({...productForm, price: e.target.value === '' ? 0 : Number(e.target.value)})} /></div>
+                <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">سعر الجملة</label><input type="number" step="0.01" placeholder="0.00" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.wholesale_price || 0} onChange={e => setProductForm({...productForm, wholesale_price: e.target.value === '' ? 0 : Number(e.target.value)})} /></div>
               </div>
               <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">الفئة</label>
-                <select className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value as any})}>
+                <select className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.category || 'أدوات المطبخ'} onChange={e => setProductForm({...productForm, category: e.target.value as any})}>
                   <option>أدوات المطبخ</option><option>الأجهزة الكهربائية</option><option>الديكور</option><option>أواني التقديم</option>
                 </select>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-black text-gray-400 mr-2">الصورة الأساسية</label>
                 <div className="flex gap-2">
-                  <input type="text" placeholder="رابط الصورة..." className="flex-1 p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.image} onChange={e => setProductForm({...productForm, image: e.target.value})} />
+                  <input type="text" placeholder="رابط الصورة..." className="flex-1 p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.image || ''} onChange={e => setProductForm({...productForm, image: e.target.value})} />
                   <button type="button" onClick={() => fileInputRef.current?.click()} className="p-4 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-100 transition"><Upload className="w-6 h-6" /></button>
                   <input type="file" ref={fileInputRef} className="hidden" accept=".jpg,.jpeg" onChange={(e) => handleProductImageUpload(e, true)} />
                 </div>
@@ -804,7 +908,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                         type="text" 
                         placeholder="رابط صورة إضافية..." 
                         className="flex-1 p-3 border rounded-xl font-bold bg-gray-50 text-sm" 
-                        value={img} 
+                        value={img || ''} 
                         onChange={e => {
                           const newImages = [...(productForm.images || [])];
                           newImages[idx] = e.target.value;
@@ -847,7 +951,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                   </div>
                 </div>
               </div>
-              <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">وصف المنتج</label><textarea placeholder="اكتبي تفاصيل المنتج..." className="w-full p-4 border rounded-2xl font-bold h-28 bg-gray-50" value={productForm.description} onChange={e => setProductForm({...productForm, description: e.target.value})} /></div>
+              <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">وصف المنتج</label><textarea placeholder="اكتبي تفاصيل المنتج..." className="w-full p-4 border rounded-2xl font-bold h-28 bg-gray-50" value={productForm.description || ''} onChange={e => setProductForm({...productForm, description: e.target.value})} /></div>
               <button onClick={handleSaveProduct} disabled={isLoading} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black text-lg shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
                 {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : <Package className="w-6 h-6" />} {editingProduct ? 'حفظ التغييرات' : 'نشر المنتج'}
               </button>

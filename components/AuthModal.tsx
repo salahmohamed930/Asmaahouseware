@@ -125,32 +125,32 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             <>
               <div className="relative group">
                 <User className="absolute right-4 top-4 w-5 h-5 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
-                <input type="text" name="fullName" required placeholder="الاسم بالكامل" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all" value={formData.fullName} onChange={handleChange} />
+                <input type="text" name="fullName" required placeholder="الاسم بالكامل" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all" value={formData.fullName || ''} onChange={handleChange} />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="relative group">
                   <Phone className="absolute right-4 top-4 w-5 h-5 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
-                  <input type="tel" name="phone" required placeholder="رقم الهاتف" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all text-left" value={formData.phone} onChange={handleChange} />
+                  <input type="tel" name="phone" required placeholder="رقم الهاتف" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all text-left" value={formData.phone || ''} onChange={handleChange} />
                 </div>
                 <div className="relative group">
                   <MapPin className="absolute right-4 top-4 w-5 h-5 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
-                  <input type="text" name="address" required placeholder="العنوان بالتفصيل" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all" value={formData.address} onChange={handleChange} />
+                  <input type="text" name="address" required placeholder="العنوان بالتفصيل" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all" value={formData.address || ''} onChange={handleChange} />
                 </div>
               </div>
             </>
           )}
           <div className="relative group">
             <Mail className="absolute right-4 top-4 w-5 h-5 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
-            <input type="email" name="email" required placeholder="البريد الإلكتروني" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all" value={formData.email} onChange={handleChange} />
+            <input type="email" name="email" required placeholder="البريد الإلكتروني" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all" value={formData.email || ''} onChange={handleChange} />
           </div>
           <div className="relative group">
             <Lock className="absolute right-4 top-4 w-5 h-5 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
-            <input type="password" name="password" required placeholder="كلمة المرور" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all" value={formData.password} onChange={handleChange} />
+            <input type="password" name="password" required placeholder="كلمة المرور" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all" value={formData.password || ''} onChange={handleChange} />
           </div>
           {!isLogin && (
             <div className="relative group">
               <Lock className="absolute right-4 top-4 w-5 h-5 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
-              <input type="password" name="confirmPassword" required placeholder="تأكيد كلمة المرور" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all" value={formData.confirmPassword} onChange={handleChange} />
+              <input type="password" name="confirmPassword" required placeholder="تأكيد كلمة المرور" className="w-full pr-12 pl-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-blue-600 outline-none font-bold transition-all" value={formData.confirmPassword || ''} onChange={handleChange} />
             </div>
           )}
           <button disabled={isLoading} className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black text-lg flex items-center justify-center gap-3 hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all disabled:opacity-50 active:scale-95">

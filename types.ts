@@ -15,6 +15,7 @@ export interface UserAccount {
 export interface Product {
   id: number;
   name: string;
+  code?: string;
   category: string;
   price: number;
   wholesale_price?: number;
