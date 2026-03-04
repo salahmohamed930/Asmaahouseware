@@ -282,12 +282,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
     }
   };
 
+  const convertToJpg = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
+          } else {
+            reject(new Error('Could not get canvas context'));
+          }
+        };
+        img.onerror = reject;
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleHeroImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setSiteSettings({ ...siteSettings, hero_image: e.target?.result as string });
-    reader.readAsDataURL(file);
+    try {
+      const jpgDataUrl = await convertToJpg(file);
+      setSiteSettings({ ...siteSettings, hero_image: jpgDataUrl });
+    } catch (err) {
+      console.error('Error converting image:', err);
+      alert('فشل في معالجة الصورة');
+    }
+  };
+
+  const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isMain: boolean, index?: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const jpgDataUrl = await convertToJpg(file);
+      if (isMain) {
+        setProductForm({ ...productForm, image: jpgDataUrl });
+      } else if (index !== undefined) {
+        const newImages = [...(productForm.images || [])];
+        newImages[index] = jpgDataUrl;
+        setProductForm({ ...productForm, images: newImages });
+      } else {
+        setProductForm({ ...productForm, images: [...(productForm.images || []), jpgDataUrl] });
+      }
+    } catch (err) {
+      console.error('Error converting image:', err);
+      alert('فشل في معالجة الصورة');
+    }
   };
 
   const toggleVisibility = async (p: Product) => {
@@ -668,7 +719,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
                     <Upload className="w-10 h-10" />
                   </div>
-                  <input type="file" ref={heroFileInputRef} className="hidden" accept="image/*" onChange={handleHeroImageChange} />
+                  <input type="file" ref={heroFileInputRef} className="hidden" accept=".jpg,.jpeg" onChange={handleHeroImageChange} />
                 </div>
               </div>
             </div>
@@ -735,7 +786,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                   <option>أدوات المطبخ</option><option>الأجهزة الكهربائية</option><option>الديكور</option><option>أواني التقديم</option>
                 </select>
               </div>
-              <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">رابط الصورة الأساسية (URL)</label><input type="text" placeholder="https://..." className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.image} onChange={e => setProductForm({...productForm, image: e.target.value})} /></div>
+              <div className="space-y-1">
+                <label className="text-xs font-black text-gray-400 mr-2">الصورة الأساسية</label>
+                <div className="flex gap-2">
+                  <input type="text" placeholder="رابط الصورة..." className="flex-1 p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.image} onChange={e => setProductForm({...productForm, image: e.target.value})} />
+                  <button type="button" onClick={() => fileInputRef.current?.click()} className="p-4 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-100 transition"><Upload className="w-6 h-6" /></button>
+                  <input type="file" ref={fileInputRef} className="hidden" accept=".jpg,.jpeg" onChange={(e) => handleProductImageUpload(e, true)} />
+                </div>
+              </div>
               
               <div className="space-y-3">
                 <label className="text-xs font-black text-gray-400 mr-2">صور إضافية للمنتج</label>
@@ -765,13 +823,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                       </button>
                     </div>
                   ))}
-                  <button 
-                    type="button"
-                    onClick={() => setProductForm({...productForm, images: [...(productForm.images || []), '']})}
-                    className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 font-bold text-xs hover:bg-gray-50 transition flex items-center justify-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" /> إضافة صورة أخرى
-                  </button>
+                  <div className="flex gap-2">
+                    <button 
+                      type="button"
+                      onClick={() => setProductForm({...productForm, images: [...(productForm.images || []), '']})}
+                      className="flex-1 py-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 font-bold text-xs hover:bg-gray-50 transition flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" /> إضافة رابط صورة
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = '.jpg,.jpeg';
+                        input.onchange = (e) => handleProductImageUpload(e as any, false);
+                        input.click();
+                      }}
+                      className="px-6 py-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition flex items-center justify-center gap-2 font-bold text-xs"
+                    >
+                      <Upload className="w-4 h-4" /> رفع JPG
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">وصف المنتج</label><textarea placeholder="اكتبي تفاصيل المنتج..." className="w-full p-4 border rounded-2xl font-bold h-28 bg-gray-50" value={productForm.description} onChange={e => setProductForm({...productForm, description: e.target.value})} /></div>
