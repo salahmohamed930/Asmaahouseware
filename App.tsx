@@ -84,14 +84,20 @@ const App: React.FC = () => {
   const fetchUserOrders = async () => {
     if (!user) return;
     setIsOrdersLoading(true);
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*, order_items(*)')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-    
-    if (data) setUserOrders(data);
-    setIsOrdersLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*, order_items(*)')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      if (data) setUserOrders(data);
+    } catch (err) {
+      console.error("Error fetching user orders:", err);
+    } finally {
+      setIsOrdersLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -265,6 +271,7 @@ const App: React.FC = () => {
                           <p className="text-sm font-bold text-gray-500">التاريخ: {new Date(order.created_at).toLocaleDateString('ar-EG')}</p>
                         </div>
                         <div className={`px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-2 ${statusMap[order.status as keyof typeof statusMap]?.color || 'bg-gray-100'}`}>
+                          {statusMap[order.status as keyof typeof statusMap]?.icon && React.createElement(statusMap[order.status as keyof typeof statusMap].icon, { className: "w-4 h-4" })}
                           {statusMap[order.status as keyof typeof statusMap]?.label || order.status}
                         </div>
                       </div>
