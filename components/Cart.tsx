@@ -142,7 +142,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                       <img src={item.image} className="w-20 h-20 object-cover rounded-xl shadow-sm" alt="" />
                       <div className="flex-1">
                         <h3 className="font-bold text-gray-800 text-sm">{item.name}</h3>
-                        <p className="text-blue-600 font-black text-sm my-1">{item.price.toLocaleString()} ج.م</p>
+                        <p className="text-blue-600 font-black text-sm my-1">{(item.price || 0).toLocaleString()} ج.م</p>
                         <div className="flex items-center justify-between mt-2">
                           <div className="flex items-center bg-gray-50 rounded-xl px-2 border">
                             <button onClick={() => onUpdateQuantity(item.id, item.selectedColor, -1)} className="p-1.5 hover:text-blue-600 transition"><Minus className="w-3.5 h-3.5" /></button>
@@ -170,7 +170,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
 
           {items.length > 0 && !isSuccess && user && (
             <div className="p-6 border-t bg-gray-50/50 backdrop-blur-md">
-              <div className="flex items-center justify-between mb-4"><span className="text-gray-500 font-bold text-sm">المبلغ الإجمالي:</span><span className="text-2xl font-black text-blue-600">{total.toLocaleString()} ج.م</span></div>
+              <div className="flex items-center justify-between mb-4"><span className="text-gray-500 font-bold text-sm">المبلغ الإجمالي:</span><span className="text-2xl font-black text-blue-600">{(total || 0).toLocaleString()} ج.م</span></div>
               {!showCheckoutForm ? (
                 <button onClick={() => setShowCheckoutForm(true)} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-700 transition shadow-xl shadow-blue-100">إتمام الطلب</button>
               ) : (

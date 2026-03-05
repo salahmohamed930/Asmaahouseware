@@ -23,6 +23,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [productSearchQuery, setProductSearchQuery] = useState('');
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
+  const [orderViewType, setOrderViewType] = useState<'active' | 'archived'>('active');
+  const [productPage, setProductPage] = useState(0);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const productsPerPage = 50;
   const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -105,15 +110,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
     }
   };
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (page = 0, search = '') => {
     try {
-      const { data, error } = await supabase.from('products').select('*').order('id', { ascending: false });
+      let query = supabase.from('products').select('*', { count: 'exact' });
+      
+      if (search) {
+        query = query.or(`name.ilike.%${search}%,code.ilike.%${search}%,description.ilike.%${search}%`);
+      }
+      
+      const { data, error, count } = await query
+        .order('id', { ascending: false })
+        .range(page * productsPerPage, (page + 1) * productsPerPage - 1);
+        
       if (error) throw error;
-      setProducts(data || []);
+      const normalizedData = (data || []).map(p => ({
+        ...p,
+        code: p.code || (p as any).Code,
+        price: p.price || (p as any).Price,
+        wholesale_price: p.wholesale_price !== undefined && p.wholesale_price !== null ? p.wholesale_price : (p as any).Wholesale_Price
+      }));
+      setProducts(normalizedData);
+      if (count !== null) setTotalProducts(count);
     } catch (e) {
       console.error("Error fetching products:", e);
     }
   };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (session?.user?.role === 'admin' && activeTab === 'products') {
+        fetchProducts(productPage, productSearchQuery);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [activeTab, productPage, productSearchQuery, session]);
+
+  useEffect(() => {
+    setProductPage(0);
+  }, [productSearchQuery]);
 
   const fetchUsers = async () => {
     try {
@@ -177,6 +211,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
     }
   };
 
+  const updateOrderPaymentStatus = async (orderId: string, paymentStatus: string) => {
+    try {
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, payment_status: paymentStatus as any } : o));
+      const { error } = await supabase.from('orders').update({ payment_status: paymentStatus }).eq('id', orderId);
+      if (error) throw error;
+      fetchOrders();
+    } catch (err: any) {
+      console.error("Error updating payment status:", err);
+      alert('فشل تحديث حالة التحصيل: ' + (err.message || ''));
+      fetchOrders();
+    }
+  };
+
   const handlePrint = (order: Order) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -192,7 +239,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
           ${item.selected_color ? `<div style="font-size: 10px; color: #666;">اللون: ${item.selected_color}</div>` : ''}
         </td>
         <td style="padding: 5px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
-        <td style="padding: 5px; border-bottom: 1px solid #eee; text-align: left;">${item.price.toLocaleString()}</td>
+        <td style="padding: 5px; border-bottom: 1px solid #eee; text-align: left;">${(item.price || 0).toLocaleString()}</td>
       </tr>
     `).join('');
 
@@ -246,7 +293,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
 
           <div class="total-section">
             <span>المبلغ الإجمالي:</span>
-            <span>${order.total_price.toLocaleString()} ج.م</span>
+            <span>${(order.total_price || 0).toLocaleString()} ج.م</span>
           </div>
 
           <div class="footer">
@@ -427,6 +474,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
     cancelled: { label: 'ملغي', color: 'bg-red-100 text-red-600', icon: AlertCircle },
   };
 
+  const paymentStatusMap = {
+    collected: { label: 'تم التحصيل', color: 'bg-green-50 text-green-600' },
+    not_collected: { label: 'لم يتم التحصيل', color: 'bg-red-50 text-red-600' },
+  };
+
   const pendingOrdersCount = orders.filter(o => o.status === 'pending' || o.status === 'processing').length;
 
   if (!session) return (
@@ -534,7 +586,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8">
             <div className="bg-white p-6 md:p-8 rounded-[2rem] border shadow-sm">
               <p className="text-gray-400 font-bold mb-2 text-sm">إجمالي المنتجات</p>
-              <h4 className="text-4xl md:text-5xl font-black text-blue-600">{products.length}</h4>
+              <h4 className="text-4xl md:text-5xl font-black text-blue-600">{totalProducts}</h4>
             </div>
             <div className="bg-white p-6 md:p-8 rounded-[2rem] border shadow-sm">
               <p className="text-gray-400 font-bold mb-2 text-sm">إجمالي الطلبات</p>
@@ -576,20 +628,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                    </tr>
                  </thead>
                  <tbody className="divide-y">
-                   {(products || []).filter(p => 
-                     (p.name || '').toLowerCase().includes(productSearchQuery.toLowerCase()) || 
-                     (p.code || '').toLowerCase().includes(productSearchQuery.toLowerCase()) || 
-                     (p.description || '').toLowerCase().includes(productSearchQuery.toLowerCase())
-                   ).map(p => (
-                     <tr key={p.id} className={`hover:bg-gray-50 transition ${p.is_visible === false ? 'bg-gray-50/50' : ''}`}>
+                   {(products || []).map((p, idx) => (
+                     <tr key={p.id || `p-${idx}`} className={`hover:bg-gray-50 transition ${p.is_visible === false ? 'bg-gray-50/50' : ''}`}>
                      <td className="px-8 py-5 flex items-center gap-4 font-black">
                        <img src={p.image || 'https://via.placeholder.com/150'} className="w-14 h-14 rounded-2xl object-cover shadow-sm" alt="" />
                        <span>{p.name}</span>
                      </td>
-                     <td className="px-8 py-5 text-sm font-bold text-blue-600">{p.code || '---'}</td>
+                     <td className="px-8 py-5 text-sm font-bold text-blue-600">{(p as any).code || (p as any).Code || '---'}</td>
                      <td className="px-8 py-5 text-sm font-bold text-gray-400">{p.category}</td>
-                     <td className="px-8 py-5 text-sm font-black text-blue-600">{p.price.toLocaleString()} ج.م</td>
-                     <td className="px-8 py-5 text-sm font-black text-orange-600">{p.wholesale_price?.toLocaleString() || '---'} ج.م</td>
+                     <td className="px-8 py-5 text-sm font-black text-blue-600">{((p as any).price || (p as any).Price || 0).toLocaleString()} ج.م</td>
+                     <td className="px-8 py-5 text-sm font-black text-orange-600">
+                       {((p as any).wholesale_price !== undefined && (p as any).wholesale_price !== null) 
+                         ? (p as any).wholesale_price.toLocaleString() 
+                         : ((p as any).Wholesale_Price !== undefined && (p as any).Wholesale_Price !== null)
+                           ? (p as any).Wholesale_Price.toLocaleString()
+                           : '---'} ج.م
+                     </td>
                      <td className="px-8 py-5">
                        <span className={`px-4 py-1.5 rounded-full text-[10px] font-black ${p.is_visible === false ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
                          {p.is_visible === false ? 'مخفي' : 'ظاهر'}
@@ -609,13 +663,51 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                </tbody>
              </table>
            </div>
+
+           {totalProducts > productsPerPage && (
+             <div className="flex items-center justify-between bg-white p-6 rounded-2xl border shadow-sm">
+               <div className="text-sm font-bold text-gray-500">
+                 عرض {productPage * productsPerPage + 1} - {Math.min((productPage + 1) * productsPerPage, totalProducts)} من {totalProducts} منتج
+               </div>
+               <div className="flex gap-2">
+                 <button 
+                   disabled={productPage === 0}
+                   onClick={() => setProductPage(prev => prev - 1)}
+                   className="px-6 py-2 bg-gray-50 border rounded-xl font-bold text-sm disabled:opacity-50 hover:bg-gray-100 transition"
+                 >
+                   السابق
+                 </button>
+                 <button 
+                   disabled={(productPage + 1) * productsPerPage >= totalProducts}
+                   onClick={() => setProductPage(prev => prev + 1)}
+                   className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 hover:bg-blue-700 transition"
+                 >
+                   التالي
+                 </button>
+               </div>
+             </div>
+           )}
           </div>
         )}
 
         {activeTab === 'orders' && (
           <div className="space-y-6">
-            <div className="bg-white p-4 rounded-2xl border shadow-sm flex items-center gap-4">
-              <div className="relative flex-1">
+            <div className="flex gap-2 mb-2">
+              <button 
+                onClick={() => setOrderViewType('active')}
+                className={`px-6 py-2 rounded-xl font-bold text-sm transition ${orderViewType === 'active' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                الطلبات الحالية
+              </button>
+              <button 
+                onClick={() => setOrderViewType('archived')}
+                className={`px-6 py-2 rounded-xl font-bold text-sm transition ${orderViewType === 'archived' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                أرشيف الطلبات
+              </button>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border shadow-sm flex flex-col md:flex-row items-center gap-4">
+              <div className="relative flex-1 w-full">
                 <input 
                   type="text" 
                   placeholder="ابحثي عن طلب بالاسم، الهاتف، أو رقم الطلب..." 
@@ -624,6 +716,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                   onChange={(e) => setOrderSearchQuery(e.target.value)}
                 />
                 <Search className="absolute right-4 top-3 text-gray-400 w-5 h-5" />
+              </div>
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <span className="text-xs font-black text-gray-400 whitespace-nowrap">تصفية بالحالة:</span>
+                <select 
+                  className="flex-1 md:w-40 p-3 bg-gray-50 border border-gray-100 rounded-xl font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-600/10"
+                  value={orderStatusFilter}
+                  onChange={(e) => setOrderStatusFilter(e.target.value)}
+                >
+                  <option value="all">كل الحالات</option>
+                  {Object.keys(statusMap).map(s => (
+                    <option key={s} value={s}>{statusMap[s as keyof typeof statusMap].label}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -634,28 +739,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
               </div>
             ) : (
               <div className="space-y-6">
-                {orders.filter(order => 
-                  (order.customer_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase()) ||
-                  (order.customer_phone || '').includes(orderSearchQuery) ||
-                  (order.id || '').toLowerCase().includes(orderSearchQuery.toLowerCase())
-                ).length === 0 ? (
+                {orders.filter(order => {
+                  const matchesSearch = (order.customer_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase()) ||
+                    (order.customer_phone || '').includes(orderSearchQuery) ||
+                    (order.id || '').toLowerCase().includes(orderSearchQuery.toLowerCase());
+                  const matchesStatus = orderStatusFilter === 'all' || order.status === orderStatusFilter;
+                  const isArchived = order.status === 'cancelled' || (order.status === 'delivered' && order.payment_status === 'collected');
+                  const matchesViewType = orderViewType === 'archived' ? isArchived : !isArchived;
+                  return matchesSearch && matchesStatus && matchesViewType;
+                }).length === 0 ? (
                   <div className="bg-white p-10 rounded-[2rem] border text-center">
                     <p className="text-gray-400 font-bold">لا توجد نتائج تطابق بحثك</p>
                   </div>
                 ) : (
-                  orders.filter(order => 
-                    (order.customer_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase()) ||
-                    (order.customer_phone || '').includes(orderSearchQuery) ||
-                    (order.id || '').toLowerCase().includes(orderSearchQuery.toLowerCase())
-                  ).map(order => (
-                    <div key={order.id} className="bg-white p-8 rounded-[2.5rem] border shadow-sm animate-in fade-in slide-in-from-bottom-2">
+                  orders.filter(order => {
+                    const matchesSearch = (order.customer_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase()) ||
+                      (order.customer_phone || '').includes(orderSearchQuery) ||
+                      (order.id || '').toLowerCase().includes(orderSearchQuery.toLowerCase());
+                    const matchesStatus = orderStatusFilter === 'all' || order.status === orderStatusFilter;
+                    const isArchived = order.status === 'cancelled' || (order.status === 'delivered' && order.payment_status === 'collected');
+                    const matchesViewType = orderViewType === 'archived' ? isArchived : !isArchived;
+                    return matchesSearch && matchesStatus && matchesViewType;
+                  }).map((order, idx) => (
+                    <div key={order.id || `order-${idx}`} className="bg-white p-8 rounded-[2.5rem] border shadow-sm animate-in fade-in slide-in-from-bottom-2">
                       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                         <div>
                           <div className="flex items-center gap-3 mb-1">
                             <h4 className="font-black text-xl text-blue-600">طلب #{order.id.slice(0,8)}</h4>
-                            <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-2 ${statusMap[order.status as keyof typeof statusMap]?.color || 'bg-gray-100'}`}>
-                              {statusMap[order.status as keyof typeof statusMap]?.label || order.status}
-                            </span>
+                            <div className="flex gap-2">
+                              <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-2 ${statusMap[order.status as keyof typeof statusMap]?.color || 'bg-gray-100'}`}>
+                                {statusMap[order.status as keyof typeof statusMap]?.label || order.status}
+                              </span>
+                              {order.payment_status && (
+                                <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-2 ${paymentStatusMap[order.payment_status as keyof typeof paymentStatusMap]?.color || 'bg-gray-100'}`}>
+                                  {paymentStatusMap[order.payment_status as keyof typeof paymentStatusMap]?.label || order.payment_status}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <p className="text-sm font-black text-gray-900">{order.customer_name} • <span className="text-blue-600" dir="ltr">{order.customer_phone}</span></p>
                           {order.customer_phone_2 && <p className="text-xs font-bold text-gray-500 mt-1">رقم بديل: <span dir="ltr">{order.customer_phone_2}</span></p>}
@@ -679,23 +799,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                             >
                               {Object.keys(statusMap).map(s => <option key={s} value={s}>{statusMap[s as keyof typeof statusMap].label}</option>)}
                             </select>
+                            <select 
+                              value={order.payment_status || 'not_collected'} 
+                              onChange={e => updateOrderPaymentStatus(order.id, e.target.value)} 
+                              className="bg-gray-50 border border-gray-100 p-3 rounded-xl text-xs font-black outline-none focus:ring-2 focus:ring-green-600/20 cursor-pointer min-w-[120px]"
+                            >
+                              {Object.keys(paymentStatusMap).map(s => <option key={s} value={s}>{paymentStatusMap[s as keyof typeof paymentStatusMap].label}</option>)}
+                            </select>
                           </div>
                         </div>
                       </div>
                   <div className="bg-gray-50 p-6 rounded-[2rem] space-y-3">
-                    {(order.order_items || order.items || []).map((item: any) => (
-                      <div key={item.id} className="flex justify-between items-center text-sm font-bold">
+                    {(order.order_items || order.items || []).map((item: any, idx: number) => (
+                      <div key={item.id || `oi-${idx}`} className="flex justify-between items-center text-sm font-bold">
                         <span className="text-gray-700">
                           {item.product_name} 
                           {item.selected_color && <span className="text-[10px] text-blue-500 mr-2">(${item.selected_color})</span>} 
                           <small className="text-blue-500 font-black mr-2">×{item.quantity}</small>
                         </span>
-                        <span className="text-gray-900">{item.price.toLocaleString()} ج.م</span>
+                        <span className="text-gray-900">{(item.price || 0).toLocaleString()} ج.م</span>
                       </div>
                     ))}
                     <div className="border-t border-gray-200 mt-4 pt-4 flex justify-between items-center font-black">
                       <span className="text-gray-900">إجمالي الطلب:</span>
-                      <span className="text-2xl text-blue-600">{order.total_price.toLocaleString()} ج.م</span>
+                      <span className="text-2xl text-blue-600">{(order.total_price || 0).toLocaleString()} ج.م</span>
                     </div>
                   </div>
                 </div>
@@ -738,8 +865,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                      (u.full_name || '').toLowerCase().includes(userSearchQuery.toLowerCase()) || 
                      (u.email || '').toLowerCase().includes(userSearchQuery.toLowerCase()) ||
                      (u.phone && u.phone.includes(userSearchQuery))
-                   ).map(u => (
-                     <tr key={u.id} className="hover:bg-gray-50 transition">
+                   ).map((u, idx) => (
+                     <tr key={u.id || `u-${idx}`} className="hover:bg-gray-50 transition">
                        <td className="px-8 py-5 font-black text-gray-900">{u.full_name}</td>
                        <td className="px-8 py-5 text-sm font-bold text-gray-500">{u.email}</td>
                        <td className="px-8 py-5 text-sm font-bold text-gray-500" dir="ltr">{u.phone || '---'}</td>
@@ -783,6 +910,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                  </tbody>
                </table>
             </div>
+
+            {totalProducts > productsPerPage && (
+              <div className="flex items-center justify-between bg-white p-6 rounded-2xl border shadow-sm">
+                <div className="text-sm font-bold text-gray-500">
+                  عرض {productPage * productsPerPage + 1} - {Math.min((productPage + 1) * productsPerPage, totalProducts)} من {totalProducts} منتج
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    disabled={productPage === 0}
+                    onClick={() => setProductPage(prev => prev - 1)}
+                    className="px-6 py-2 bg-gray-50 border rounded-xl font-bold text-sm disabled:opacity-50 hover:bg-gray-100 transition"
+                  >
+                    السابق
+                  </button>
+                  <button 
+                    disabled={(productPage + 1) * productsPerPage >= totalProducts}
+                    onClick={() => setProductPage(prev => prev + 1)}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 hover:bg-blue-700 transition"
+                  >
+                    التالي
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -111,7 +111,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, userType = 'retail',
             <span className="text-sm text-gray-400 font-bold mb-0.5">السعر</span>
             <div className="flex items-end gap-1.5">
               <span className="text-3xl font-black text-blue-600 leading-none">
-                {displayPrice.toLocaleString()}
+                {displayPrice?.toLocaleString() || '0'}
               </span>
               <span className="text-xs font-black text-gray-400 pb-0.5">ج.م</span>
             </div>

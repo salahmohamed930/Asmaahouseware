@@ -20,6 +20,9 @@ const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [activeCategory, setActiveCategory] = useState<Category>('الكل');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const productsPerPage = 20;
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -30,6 +33,7 @@ const App: React.FC = () => {
   const [userOrders, setUserOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOrdersLoading, setIsOrdersLoading] = useState(false);
+  const [userOrderViewType, setUserOrderViewType] = useState<'active' | 'archived'>('active');
   
   const [heroContent, setHeroContent] = useState<SiteSettings>({
     hero_title: 'بيت عصري بلمسة إبداع',
@@ -38,7 +42,6 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
-    fetchProducts();
     fetchHeroSettings();
     checkUser();
   }, []);
@@ -61,24 +64,57 @@ const App: React.FC = () => {
     }
   };
 
-  const fetchProducts = async () => {
-    setIsLoading(true);
+  const fetchProducts = async (page = 0, category = 'الكل', search = '', isLoadMore = false) => {
+    if (!isLoadMore) setIsLoading(true);
     try {
-      const { data: dbProducts, error } = await supabase.from('products').select('*');
+      let query = supabase.from('products').select('*');
       
-      if (error) {
-        console.error('Error fetching products from DB:', error);
-        setProducts([]);
-        return;
+      // Only show visible products to regular users
+      query = query.eq('is_visible', true);
+      
+      if (category !== 'الكل') {
+        query = query.eq('category', category);
       }
+      
+      if (search) {
+        query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
+      }
+      
+      const { data, error } = await query
+        .order('id', { ascending: false })
+        .range(page * productsPerPage, (page + 1) * productsPerPage - 1);
+      
+      if (error) throw error;
 
-      setProducts(dbProducts || []);
+      if (isLoadMore) {
+        setProducts(prev => {
+          const newItems = (data || []).filter(newItem => !prev.some(oldItem => oldItem.id === newItem.id));
+          return [...prev, ...newItems];
+        });
+      } else {
+        setProducts(data || []);
+      }
+      
+      setHasMore((data || []).length === productsPerPage);
     } catch (err) {
-      console.error('Unexpected error in fetchProducts:', err);
-      setProducts([]);
+      console.error('Error fetching products:', err);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchProducts(0, activeCategory, searchQuery, false);
+      setCurrentPage(0);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [activeCategory, searchQuery]);
+
+  const loadMore = () => {
+    const nextPage = currentPage + 1;
+    setCurrentPage(nextPage);
+    fetchProducts(nextPage, activeCategory, searchQuery, true);
   };
 
   const fetchUserOrders = async () => {
@@ -105,18 +141,8 @@ const App: React.FC = () => {
   }, [view, user]);
 
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      const name = p.name || '';
-      const description = p.description || '';
-      const category = p.category || '';
-      
-      const categoryMatch = activeCategory === 'الكل' || category === activeCategory;
-      const searchMatch = name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         description.toLowerCase().includes(searchQuery.toLowerCase());
-      const visibilityMatch = p.is_visible !== false; 
-      return categoryMatch && searchMatch && visibilityMatch;
-    });
-  }, [products, activeCategory, searchQuery]);
+    return products;
+  }, [products]);
 
   const handleAddToCart = (product: Product, color?: string) => {
     const finalPrice = user?.user_type === 'wholesale' && product.wholesale_price 
@@ -140,6 +166,11 @@ const App: React.FC = () => {
     shipped: { label: 'تم الشحن', color: 'text-purple-600 bg-purple-50', icon: Truck },
     delivered: { label: 'تم الاستلام', color: 'text-green-600 bg-green-50', icon: CheckCircle },
     cancelled: { label: 'ملغي', color: 'text-red-600 bg-red-50', icon: AlertCircle },
+  };
+
+  const paymentStatusMap = {
+    collected: { label: 'تم التحصيل', color: 'text-green-600 bg-green-50' },
+    not_collected: { label: 'لم يتم التحصيل', color: 'text-red-600 bg-red-50' },
   };
 
   if (view === 'admin') return (
@@ -208,9 +239,9 @@ const App: React.FC = () => {
                   <div className="flex flex-col items-center justify-center py-32 gap-4"><Loader2 className="animate-spin w-10 h-10 text-blue-600" /><p className="font-bold text-gray-400">تحميل المنتجات...</p></div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-                    {filteredProducts.map(p => (
+                    {filteredProducts.map((p, idx) => (
                       <ProductCard 
-                        key={p.id} 
+                        key={p.id || `prod-${idx}`} 
                         product={p} 
                         userType={user?.user_type}
                         onAddToCart={(prod) => {
@@ -227,6 +258,16 @@ const App: React.FC = () => {
                         }} 
                       />
                     ))}
+                    {hasMore && filteredProducts.length > 0 && (
+                      <div className="col-span-full flex justify-center mt-12">
+                        <button 
+                          onClick={loadMore}
+                          className="bg-white border-2 border-blue-600 text-blue-600 px-10 py-4 rounded-2xl font-black hover:bg-blue-600 hover:text-white transition-all shadow-xl shadow-blue-50"
+                        >
+                          عرض المزيد من المنتجات
+                        </button>
+                      </div>
+                    )}
                     {filteredProducts.length === 0 && (
                       <div className="col-span-full py-20 text-center">
                         <Inbox className="w-12 h-12 text-gray-300 mx-auto mb-4" />
@@ -249,43 +290,72 @@ const App: React.FC = () => {
         ) : (
           <section className="py-20 bg-gray-50 min-h-[80vh]">
             <div className="container mx-auto px-4 max-w-4xl">
-              <div className="flex items-center justify-between mb-10">
-                <h2 className="text-3xl font-black text-gray-900">قائمة طلباتي</h2>
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-10 gap-4">
+                <div className="flex items-center gap-4">
+                  <h2 className="text-3xl font-black text-gray-900">قائمة طلباتي</h2>
+                  <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+                    <button 
+                      onClick={() => setUserOrderViewType('active')}
+                      className={`px-4 py-1.5 rounded-lg font-bold text-xs transition ${userOrderViewType === 'active' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      الحالية
+                    </button>
+                    <button 
+                      onClick={() => setUserOrderViewType('archived')}
+                      className={`px-4 py-1.5 rounded-lg font-bold text-xs transition ${userOrderViewType === 'archived' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      الأرشيف
+                    </button>
+                  </div>
+                </div>
                 <button onClick={() => setView('store')} className="text-blue-600 font-bold text-sm">العودة للتسوق</button>
               </div>
 
               {isOrdersLoading ? (
                 <div className="flex justify-center py-20"><Loader2 className="animate-spin w-8 h-8 text-blue-600" /></div>
-              ) : userOrders.length === 0 ? (
+              ) : userOrders.filter(order => {
+                  const isArchived = order.status === 'cancelled' || (order.status === 'delivered' && order.payment_status === 'collected');
+                  return userOrderViewType === 'archived' ? isArchived : !isArchived;
+                }).length === 0 ? (
                 <div className="bg-white p-20 rounded-[2.5rem] border text-center flex flex-col items-center gap-4">
                   <Package className="w-12 h-12 text-gray-200" />
-                  <p className="text-gray-400 font-bold">لا توجد طلبات سابقة لهذا الحساب</p>
+                  <p className="text-gray-400 font-bold">لا توجد طلبات في هذه القائمة</p>
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {userOrders.map(order => (
-                    <div key={order.id} className="bg-white p-8 rounded-[2rem] border shadow-sm">
+                  {userOrders.filter(order => {
+                    const isArchived = order.status === 'cancelled' || (order.status === 'delivered' && order.payment_status === 'collected');
+                    return userOrderViewType === 'archived' ? isArchived : !isArchived;
+                  }).map((order, idx) => (
+                    <div key={order.id || `order-${idx}`} className="bg-white p-8 rounded-[2rem] border shadow-sm">
                       <div className="flex justify-between items-start mb-6 pb-6 border-b border-gray-50">
                         <div>
                           <p className="text-xs font-black text-gray-400 mb-1">رقم الطلب: #{order.id.slice(0,8)}</p>
                           <p className="text-sm font-bold text-gray-500">التاريخ: {new Date(order.created_at).toLocaleDateString('ar-EG')}</p>
                         </div>
-                        <div className={`px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-2 ${statusMap[order.status as keyof typeof statusMap]?.color || 'bg-gray-100'}`}>
-                          {statusMap[order.status as keyof typeof statusMap]?.icon && React.createElement(statusMap[order.status as keyof typeof statusMap].icon, { className: "w-4 h-4" })}
-                          {statusMap[order.status as keyof typeof statusMap]?.label || order.status}
+                        <div className="flex flex-col items-end gap-2">
+                          <div className={`px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-2 ${statusMap[order.status as keyof typeof statusMap]?.color || 'bg-gray-100'}`}>
+                            {statusMap[order.status as keyof typeof statusMap]?.icon && React.createElement(statusMap[order.status as keyof typeof statusMap].icon, { className: "w-4 h-4" })}
+                            {statusMap[order.status as keyof typeof statusMap]?.label || order.status}
+                          </div>
+                          {order.payment_status && (
+                            <div className={`px-4 py-1.5 rounded-full text-[10px] font-black ${paymentStatusMap[order.payment_status as keyof typeof paymentStatusMap]?.color || 'bg-gray-100'}`}>
+                              {paymentStatusMap[order.payment_status as keyof typeof paymentStatusMap]?.label || order.payment_status}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="space-y-3">
-                        {order.order_items?.map((item: any) => (
-                          <div key={item.id} className="flex justify-between text-sm font-bold text-gray-600">
+                        {order.order_items?.map((item: any, idx: number) => (
+                          <div key={item.id || `item-${idx}`} className="flex justify-between text-sm font-bold text-gray-600">
                             <span>{item.product_name} × {item.quantity} {item.selected_color && <span className="text-[10px] text-gray-400">(لون: {item.selected_color})</span>}</span>
-                            <span>{item.price.toLocaleString()} ج.م</span>
+                            <span>{(item.price || 0).toLocaleString()} ج.م</span>
                           </div>
                         ))}
                       </div>
                       <div className="mt-6 pt-4 border-t border-gray-50 flex justify-between items-center">
                         <span className="font-black text-gray-900">الإجمالي الشامل:</span>
-                        <span className="text-xl font-black text-blue-600">{order.total_price.toLocaleString()} ج.م</span>
+                        <span className="text-xl font-black text-blue-600">{(order.total_price || 0).toLocaleString()} ج.م</span>
                       </div>
                     </div>
                   ))}
@@ -349,8 +419,8 @@ const App: React.FC = () => {
                   <div className="mb-8">
                     <p className="text-sm font-black text-gray-400 mb-3">اختاري اللون:</p>
                     <div className="flex gap-3">
-                      {selectedProduct.colors.map(c => (
-                        <button key={c} onClick={() => setSelectedColor(c)} className={`w-10 h-10 rounded-full border-4 ${selectedColor === c ? 'border-blue-600 scale-110 shadow-lg' : 'border-white shadow-sm'}`} style={{ backgroundColor: c }} />
+                      {selectedProduct.colors.map((c, idx) => (
+                        <button key={c || idx} onClick={() => setSelectedColor(c)} className={`w-10 h-10 rounded-full border-4 ${selectedColor === c ? 'border-blue-600 scale-110 shadow-lg' : 'border-white shadow-sm'}`} style={{ backgroundColor: c }} />
                       ))}
                     </div>
                   </div>
@@ -359,7 +429,7 @@ const App: React.FC = () => {
                   <div className="flex flex-col">
                     <span className="text-gray-400 text-xs font-black">السعر</span>
                     <span className="text-3xl font-black text-blue-600">
-                      {(user?.user_type === 'wholesale' && selectedProduct.wholesale_price ? selectedProduct.wholesale_price : selectedProduct.price).toLocaleString()} 
+                      {(user?.user_type === 'wholesale' && selectedProduct.wholesale_price ? selectedProduct.wholesale_price : selectedProduct.price)?.toLocaleString() || '0'} 
                       <small className="text-xs"> ج.م</small>
                     </span>
                     {user?.user_type === 'wholesale' && selectedProduct.wholesale_price && (

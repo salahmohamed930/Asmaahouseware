@@ -43,6 +43,7 @@ export interface Order {
   customer_address: string;
   total_price: number;
   status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  payment_status?: 'collected' | 'not_collected';
   created_at: string;
   items?: OrderItem[];
   // order_items is added to match the Supabase response when joining with the order_items table
