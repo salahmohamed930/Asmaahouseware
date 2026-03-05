@@ -115,20 +115,72 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
       let query = supabase.from('products').select('*', { count: 'exact' });
       
       if (search) {
-        query = query.or(`name.ilike.%${search}%,code.ilike.%${search}%,description.ilike.%${search}%`);
+        // If search is purely a number (no letters/symbols), search ONLY by ID
+        const searchNum = Number(search);
+        if (!isNaN(searchNum) && search.trim() !== '' && /^\d+$/.test(search.trim())) {
+          query = query.eq('id', searchNum);
+        } else {
+          query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,"الاسم".ilike.%${search}%,"الوصف".ilike.%${search}%`);
+        }
       }
       
-      const { data, error, count } = await query
-        .order('id', { ascending: false })
+      let { data, error, count } = await query
         .range(page * productsPerPage, (page + 1) * productsPerPage - 1);
         
-      if (error) throw error;
-      const normalizedData = (data || []).map(p => ({
-        ...p,
-        code: p.code || (p as any).Code,
-        price: p.price || (p as any).Price,
-        wholesale_price: p.wholesale_price !== undefined && p.wholesale_price !== null ? p.wholesale_price : (p as any).Wholesale_Price
-      }));
+      if (error) {
+        console.warn("Primary query failed in AdminDashboard, attempting fallback...", error);
+        // Fallback: fetch all without filters/orders and do it in memory
+        const fallback = await supabase.from('products').select('*');
+        if (fallback.error) throw fallback.error;
+        
+        let allData = fallback.data || [];
+        
+        if (search) {
+           const s = search.toLowerCase();
+           const isNumeric = /^\d+$/.test(s.trim());
+           
+           allData = allData.filter(p => {
+             const anyP = p as any;
+             
+             if (isNumeric) {
+               const idStr = String(p.id || '').toLowerCase();
+               return idStr === s.trim();
+             } else {
+               const name = String(p.name || anyP.Name || anyP['الاسم'] || anyP['اسم المنتج'] || anyP['اسم الصنف'] || anyP['الصنف'] || '').toLowerCase();
+               const desc = String(p.description || anyP.Description || anyP['الوصف'] || anyP['التفاصيل'] || anyP['وصف المنتج'] || '').toLowerCase();
+               return name.includes(s) || desc.includes(s);
+             }
+           });
+        }
+        
+        count = allData.length;
+        data = allData.slice(page * productsPerPage, (page + 1) * productsPerPage);
+      }
+      
+      const normalizedData = (data || []).map(p => {
+        const anyP = p as any;
+        return {
+          ...p,
+          name: p.name || anyP.Name || anyP['الاسم'] || anyP['اسم المنتج'] || anyP['اسم الصنف'] || anyP['الصنف'] || '',
+          category: p.category || anyP.Category || anyP['الفئة'] || anyP['القسم'] || anyP['التصنيف'] || '',
+          image: p.image || anyP.Image || anyP['الصورة'] || anyP['صورة'] || anyP['صورة المنتج'] || '',
+          description: p.description || anyP.Description || anyP['الوصف'] || anyP['التفاصيل'] || anyP['وصف المنتج'] || '',
+          code: p.code || anyP.Code || anyP['الكود'] || anyP['كود'] || anyP['كود المنتج'] || '',
+          price: Number(p.price || anyP.Price || anyP['السعر'] || anyP['سعر القطاعي'] || anyP['سعر البيع'] || 0),
+          wholesale_price: p.wholesale_price !== undefined && p.wholesale_price !== null 
+            ? Number(p.wholesale_price)
+            : (anyP.Wholesale_Price !== undefined && anyP.Wholesale_Price !== null)
+              ? Number(anyP.Wholesale_Price)
+              : (anyP['سعر الجملة'] !== undefined && anyP['سعر الجملة'] !== null)
+                ? Number(anyP['سعر الجملة'])
+                : null,
+          is_visible: p.is_visible !== undefined 
+            ? p.is_visible 
+            : (anyP.Is_Visible !== undefined 
+              ? anyP.Is_Visible 
+              : (anyP['الحالة'] !== undefined ? anyP['الحالة'] !== 'مخفي' && anyP['الحالة'] !== 'غير متاح' : true))
+        };
+      });
       setProducts(normalizedData);
       if (count !== null) setTotalProducts(count);
     } catch (e) {
@@ -634,15 +686,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                        <img src={p.image || 'https://via.placeholder.com/150'} className="w-14 h-14 rounded-2xl object-cover shadow-sm" alt="" />
                        <span>{p.name}</span>
                      </td>
-                     <td className="px-8 py-5 text-sm font-bold text-blue-600">{(p as any).code || (p as any).Code || '---'}</td>
+                     <td className="px-8 py-5 text-sm font-bold text-blue-600">#{p.id || '---'}</td>
                      <td className="px-8 py-5 text-sm font-bold text-gray-400">{p.category}</td>
-                     <td className="px-8 py-5 text-sm font-black text-blue-600">{((p as any).price || (p as any).Price || 0).toLocaleString()} ج.م</td>
+                     <td className="px-8 py-5 text-sm font-black text-blue-600">{(p.price || 0).toLocaleString()} ج.م</td>
                      <td className="px-8 py-5 text-sm font-black text-orange-600">
-                       {((p as any).wholesale_price !== undefined && (p as any).wholesale_price !== null) 
-                         ? (p as any).wholesale_price.toLocaleString() 
-                         : ((p as any).Wholesale_Price !== undefined && (p as any).Wholesale_Price !== null)
-                           ? (p as any).Wholesale_Price.toLocaleString()
-                           : '---'} ج.م
+                       {(p.wholesale_price !== undefined && p.wholesale_price !== null) 
+                         ? p.wholesale_price.toLocaleString() 
+                         : '---'} ج.م
                      </td>
                      <td className="px-8 py-5">
                        <span className={`px-4 py-1.5 rounded-full text-[10px] font-black ${p.is_visible === false ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>

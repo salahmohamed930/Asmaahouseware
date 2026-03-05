@@ -77,25 +77,98 @@ const App: React.FC = () => {
       }
       
       if (search) {
-        query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
+        const searchNum = Number(search);
+        // If search is purely a number (no letters/symbols), search ONLY by ID
+        if (!isNaN(searchNum) && search.trim() !== '' && /^\d+$/.test(search.trim())) {
+          query = query.eq('id', searchNum);
+        } else {
+          query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,"الاسم".ilike.%${search}%,"الوصف".ilike.%${search}%`);
+        }
       }
       
-      const { data, error } = await query
-        .order('id', { ascending: false })
+      let { data, error } = await query
         .range(page * productsPerPage, (page + 1) * productsPerPage - 1);
       
-      if (error) throw error;
+      if (error) {
+        console.warn("Primary query failed in App, attempting fallback...", error);
+        const fallback = await supabase.from('products').select('*');
+        if (fallback.error) throw fallback.error;
+        
+        let allData = fallback.data || [];
+        
+        // In-memory filter
+        allData = allData.filter(p => {
+          const anyP = p as any;
+          const isVisible = p.is_visible !== undefined 
+            ? p.is_visible 
+            : (anyP.Is_Visible !== undefined 
+              ? anyP.Is_Visible 
+              : (anyP['الحالة'] !== undefined ? anyP['الحالة'] !== 'مخفي' && anyP['الحالة'] !== 'غير متاح' : true));
+          
+          if (!isVisible) return false;
+          
+          if (category !== 'الكل') {
+            const cat = p.category || anyP.Category || anyP['الفئة'] || anyP['القسم'] || anyP['التصنيف'] || '';
+            if (cat !== category) return false;
+          }
+          
+          if (search) {
+             const s = search.toLowerCase();
+             const isNumeric = /^\d+$/.test(s.trim());
+             
+             if (isNumeric) {
+               // If it's purely a number, only match the ID exactly
+               const idStr = String(p.id || '').toLowerCase();
+               if (idStr !== s.trim()) return false;
+             } else {
+               // Otherwise, search in name and description
+               const name = String(p.name || anyP.Name || anyP['الاسم'] || anyP['اسم المنتج'] || anyP['اسم الصنف'] || anyP['الصنف'] || '').toLowerCase();
+               const desc = String(p.description || anyP.Description || anyP['الوصف'] || anyP['التفاصيل'] || anyP['وصف المنتج'] || '').toLowerCase();
+               if (!name.includes(s) && !desc.includes(s)) return false;
+             }
+          }
+          
+          return true;
+        });
+        
+        data = allData.slice(page * productsPerPage, (page + 1) * productsPerPage);
+      }
+
+      const normalizedData = (data || []).map(p => {
+        const anyP = p as any;
+        return {
+          ...p,
+          name: p.name || anyP.Name || anyP['الاسم'] || anyP['اسم المنتج'] || anyP['اسم الصنف'] || anyP['الصنف'] || '',
+          category: p.category || anyP.Category || anyP['الفئة'] || anyP['القسم'] || anyP['التصنيف'] || '',
+          image: p.image || anyP.Image || anyP['الصورة'] || anyP['صورة'] || anyP['صورة المنتج'] || '',
+          description: p.description || anyP.Description || anyP['الوصف'] || anyP['التفاصيل'] || anyP['وصف المنتج'] || '',
+          code: p.code || anyP.Code || anyP['الكود'] || anyP['كود'] || anyP['كود المنتج'] || '',
+          price: Number(p.price || anyP.Price || anyP['السعر'] || anyP['سعر القطاعي'] || anyP['سعر البيع'] || 0),
+          wholesale_price: p.wholesale_price !== undefined && p.wholesale_price !== null 
+            ? Number(p.wholesale_price)
+            : (anyP.Wholesale_Price !== undefined && anyP.Wholesale_Price !== null)
+              ? Number(anyP.Wholesale_Price)
+              : (anyP['سعر الجملة'] !== undefined && anyP['سعر الجملة'] !== null)
+                ? Number(anyP['سعر الجملة'])
+                : null,
+          is_visible: p.is_visible !== undefined 
+            ? p.is_visible 
+            : (anyP.Is_Visible !== undefined 
+              ? anyP.Is_Visible 
+              : (anyP['الحالة'] !== undefined ? anyP['الحالة'] !== 'مخفي' && anyP['الحالة'] !== 'غير متاح' : true))
+        };
+      });
 
       if (isLoadMore) {
         setProducts(prev => {
-          const newItems = (data || []).filter(newItem => !prev.some(oldItem => oldItem.id === newItem.id));
+          const newItems = normalizedData.filter(newItem => !prev.some(oldItem => oldItem.id === newItem.id));
           return [...prev, ...newItems];
         });
       } else {
-        setProducts(data || []);
+        setProducts(normalizedData);
       }
       
-      setHasMore((data || []).length === productsPerPage);
+      setHasMore(normalizedData.length === productsPerPage);
     } catch (err) {
       console.error('Error fetching products:', err);
     } finally {
