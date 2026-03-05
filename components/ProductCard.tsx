@@ -41,7 +41,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, userType = 'retail',
         onClick={() => onViewDetails(product)}
       >
         <img 
-          src={currentImageIndex === -1 ? product.image : allImages[currentImageIndex + 1]} 
+          src={(currentImageIndex === -1 ? product.image : allImages[currentImageIndex + 1]) || undefined} 
           alt={product.name} 
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out"
         />

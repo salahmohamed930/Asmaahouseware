@@ -286,7 +286,7 @@ const App: React.FC = () => {
                   <button onClick={() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })} className="bg-white text-blue-900 px-10 py-4 rounded-2xl font-black text-lg hover:bg-blue-50 transition-all shadow-xl">تسوقي الآن</button>
                 </motion.div>
                 <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="md:w-1/2">
-                  <img src={heroContent.hero_image} className="rounded-[3rem] shadow-2xl border-8 border-white/10 aspect-video object-cover" alt="Home Decor" />
+                  <img src={heroContent.hero_image || undefined} className="rounded-[3rem] shadow-2xl border-8 border-white/10 aspect-video object-cover" alt="Home Decor" />
                 </motion.div>
               </div>
             </section>
@@ -456,7 +456,7 @@ const App: React.FC = () => {
               <div className="md:w-1/2 bg-gray-50 p-8 flex flex-col gap-6">
                 <div className="flex-1 flex items-center justify-center">
                   <img 
-                    src={activeImageIndex === -1 ? selectedProduct.image : (selectedProduct.images?.[activeImageIndex] || selectedProduct.image)} 
+                    src={(activeImageIndex === -1 ? selectedProduct.image : (selectedProduct.images?.[activeImageIndex] || selectedProduct.image)) || undefined} 
                     className="w-full h-auto object-contain max-h-[400px] rounded-2xl shadow-sm" 
                     alt="" 
                   />
@@ -467,7 +467,7 @@ const App: React.FC = () => {
                       onClick={() => setActiveImageIndex(-1)}
                       className={`w-16 h-16 rounded-xl border-2 flex-shrink-0 overflow-hidden transition ${activeImageIndex === -1 ? 'border-blue-600 shadow-md' : 'border-white'}`}
                     >
-                      <img src={selectedProduct.image} className="w-full h-full object-cover" alt="" />
+                      <img src={selectedProduct.image || undefined} className="w-full h-full object-cover" alt="" />
                     </button>
                     {selectedProduct.images.map((img, idx) => (
                       <button 
@@ -475,7 +475,7 @@ const App: React.FC = () => {
                         onClick={() => setActiveImageIndex(idx)}
                         className={`w-16 h-16 rounded-xl border-2 flex-shrink-0 overflow-hidden transition ${activeImageIndex === idx ? 'border-blue-600 shadow-md' : 'border-white'}`}
                       >
-                        <img src={img} className="w-full h-full object-cover" alt="" />
+                        <img src={img || undefined} className="w-full h-full object-cover" alt="" />
                       </button>
                     ))}
                   </div>

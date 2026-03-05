@@ -22,6 +22,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState('الكل');
+  const [productVisibilityFilter, setProductVisibilityFilter] = useState('الكل');
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
   const [orderViewType, setOrderViewType] = useState<'active' | 'archived'>('active');
@@ -110,9 +112,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
     }
   };
 
-  const fetchProducts = async (page = 0, search = '') => {
+  const fetchProducts = async (page = 0, search = '', category = 'الكل', visibility = 'الكل') => {
     try {
       let query = supabase.from('products').select('*', { count: 'exact' });
+      
+      if (category !== 'الكل') {
+        query = query.eq('category', category);
+      }
+      
+      if (visibility !== 'الكل') {
+        query = query.eq('is_visible', visibility === 'ظاهر');
+      }
       
       if (search) {
         // If search is purely a number (no letters/symbols), search ONLY by ID
@@ -134,6 +144,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
         if (fallback.error) throw fallback.error;
         
         let allData = fallback.data || [];
+        
+        if (category !== 'الكل') {
+           allData = allData.filter(p => {
+             const anyP = p as any;
+             const cat = p.category || anyP.Category || anyP['الفئة'] || anyP['القسم'] || anyP['التصنيف'] || '';
+             return cat === category;
+           });
+        }
+        
+        if (visibility !== 'الكل') {
+           allData = allData.filter(p => {
+             const isVisible = p.is_visible !== undefined 
+               ? p.is_visible 
+               : ((p as any).Is_Visible !== undefined 
+                 ? (p as any).Is_Visible 
+                 : ((p as any)['الحالة'] !== undefined ? (p as any)['الحالة'] !== 'مخفي' && (p as any)['الحالة'] !== 'غير متاح' : true));
+             
+             return visibility === 'ظاهر' ? isVisible : !isVisible;
+           });
+        }
         
         if (search) {
            const s = search.toLowerCase();
@@ -191,15 +221,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
   useEffect(() => {
     const timer = setTimeout(() => {
       if (session?.user?.role === 'admin' && activeTab === 'products') {
-        fetchProducts(productPage, productSearchQuery);
+        fetchProducts(productPage, productSearchQuery, productCategoryFilter, productVisibilityFilter);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [activeTab, productPage, productSearchQuery, session]);
+  }, [activeTab, productPage, productSearchQuery, productCategoryFilter, productVisibilityFilter, session]);
 
   useEffect(() => {
     setProductPage(0);
-  }, [productSearchQuery]);
+  }, [productSearchQuery, productCategoryFilter, productVisibilityFilter]);
 
   const fetchUsers = async () => {
     try {
@@ -396,7 +426,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
       
       if (!error) { 
         setIsModalOpen(false); 
-        fetchProducts(); 
+        fetchProducts(productPage, productSearchQuery, productCategoryFilter, productVisibilityFilter); 
         setEditingProduct(null);
         setProductForm({
           name: '', code: '', category: 'أدوات المطبخ', price: 0, wholesale_price: 0, description: '', image: '', images: [], colors: [], is_visible: true
@@ -473,13 +503,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
   const toggleVisibility = async (p: Product) => {
     const newStatus = p.is_visible === false;
     const { error } = await supabase.from('products').update({ is_visible: newStatus }).eq('id', p.id);
-    if (!error) fetchProducts();
+    if (!error) fetchProducts(productPage, productSearchQuery, productCategoryFilter, productVisibilityFilter);
   };
 
   const deleteProduct = async (id: number) => {
     if (!confirm('هل أنتِ متأكدة من حذف هذا الصنف؟')) return;
     const { error } = await supabase.from('products').delete().eq('id', id);
-    if (!error) fetchProducts();
+    if (!error) fetchProducts(productPage, productSearchQuery, productCategoryFilter, productVisibilityFilter);
   };
 
   const deleteUser = async (id: string) => {
@@ -653,16 +683,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
 
         {activeTab === 'products' && (
           <div className="space-y-6">
-            <div className="bg-white p-4 rounded-2xl border shadow-sm flex items-center gap-4">
-              <div className="relative flex-1">
+            <div className="bg-white p-4 rounded-2xl border shadow-sm flex flex-col md:flex-row items-center gap-4">
+              <div className="relative flex-1 w-full">
                 <input 
                   type="text" 
-                  placeholder="ابحثي عن منتج بالاسم أو الوصف..." 
+                  placeholder="ابحثي عن منتج بالاسم أو الكود أو الوصف..." 
                   className="w-full pl-4 pr-11 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600/10 font-bold transition-all text-sm"
                   value={productSearchQuery}
                   onChange={(e) => setProductSearchQuery(e.target.value)}
                 />
                 <Search className="absolute right-4 top-3 text-gray-400 w-5 h-5" />
+              </div>
+              <div className="w-full md:w-48">
+                <select
+                  value={productCategoryFilter}
+                  onChange={(e) => setProductCategoryFilter(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600/10 font-bold text-sm"
+                >
+                  <option value="الكل">جميع الفئات</option>
+                  <option value="أدوات المطبخ">أدوات المطبخ</option>
+                  <option value="أجهزة كهربائية">أجهزة كهربائية</option>
+                  <option value="ديكور المنزل">ديكور المنزل</option>
+                  <option value="أدوات المائدة">أدوات المائدة</option>
+                  <option value="مفروشات">مفروشات</option>
+                  <option value="أطقم التقديم">أطقم التقديم</option>
+                  <option value="منظفات">منظفات</option>
+                  <option value="أخرى">أخرى</option>
+                </select>
+              </div>
+              <div className="w-full md:w-40">
+                <select
+                  value={productVisibilityFilter}
+                  onChange={(e) => setProductVisibilityFilter(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600/10 font-bold text-sm"
+                >
+                  <option value="الكل">جميع الحالات</option>
+                  <option value="ظاهر">ظاهر فقط</option>
+                  <option value="مخفي">مخفي فقط</option>
+                </select>
               </div>
             </div>
 
@@ -1007,7 +1065,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
                   className="w-full h-64 border-2 border-dashed border-gray-200 rounded-[2.5rem] overflow-hidden cursor-pointer relative group flex items-center justify-center bg-gray-50"
                 >
                   {siteSettings.hero_image ? (
-                    <img src={siteSettings.hero_image} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" alt="" />
+                    <img src={siteSettings.hero_image || undefined} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" alt="" />
                   ) : (
                     <div className="text-gray-400 flex flex-col items-center"><Upload className="w-10 h-10 mb-2" /><span className="text-xs font-black">ارفعي صورة الواجهة</span></div>
                   )}

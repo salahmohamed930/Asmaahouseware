@@ -139,7 +139,7 @@ const Cart: React.FC<CartProps> = ({ isOpen, onClose, items, onUpdateQuantity, o
                 <div className="space-y-6">
                   {items.map((item, idx) => (
                     <div key={`${item.id}-${idx}`} className="flex gap-4 border-b border-gray-50 pb-4">
-                      <img src={item.image} className="w-20 h-20 object-cover rounded-xl shadow-sm" alt="" />
+                      <img src={item.image || undefined} className="w-20 h-20 object-cover rounded-xl shadow-sm" alt="" />
                       <div className="flex-1">
                         <h3 className="font-bold text-gray-800 text-sm">{item.name}</h3>
                         <p className="text-blue-600 font-black text-sm my-1">{(item.price || 0).toLocaleString()} ج.م</p>
