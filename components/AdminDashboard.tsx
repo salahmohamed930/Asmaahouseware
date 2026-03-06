@@ -404,7 +404,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
     let error;
 
     // Prepare data for saving - remove metadata fields that shouldn't be updated
-    const { id, created_at, ...dataToSave } = productForm as any;
+    const { id, created_at, code, ...dataToSave } = productForm as any;
     
     // Ensure numeric fields are valid numbers and not NaN
     const price = Number(dataToSave.price);
@@ -1138,7 +1138,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ user: initialUser, onLo
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">اسم المنتج</label><input type="text" placeholder="مثلاً: طقم حلل جرانيت" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.name || ''} onChange={e => setProductForm({...productForm, name: e.target.value})} /></div>
-                <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">كود المنتج</label><input type="text" placeholder="مثلاً: AS-100" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.code || ''} onChange={e => setProductForm({...productForm, code: e.target.value})} /></div>
+                <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">كود المنتج</label><input type="text" placeholder="يتم توليده تلقائياً" className="w-full p-4 border rounded-2xl font-bold bg-gray-50 text-gray-500 cursor-not-allowed" value={productForm.id || ''} disabled /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1"><label className="text-xs font-black text-gray-400 mr-2">سعر القطاعي</label><input type="number" step="0.01" placeholder="0.00" className="w-full p-4 border rounded-2xl font-bold bg-gray-50" value={productForm.price || 0} onChange={e => setProductForm({...productForm, price: e.target.value === '' ? 0 : Number(e.target.value)})} /></div>
